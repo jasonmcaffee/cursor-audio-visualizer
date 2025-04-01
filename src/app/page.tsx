@@ -6,6 +6,7 @@ import styles from './page.module.css';
 import LoudnessMeter from './components/LoudnessMeter';
 import CallbackCounters from './components/CallbackCounters';
 import AudioLoudnessMeter from './services/AudioLoudnessMeter';
+import WebAudioPlayer from './services/WebAudioPlayer';
 
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
@@ -14,14 +15,18 @@ export default function Home() {
   const [audioAboveThresholdCount, setAudioAboveThresholdCount] = useState(0);
   const [silenceDetectedCount, setSilenceDetectedCount] = useState(0);
   const [audioMeter, setAudioMeter] = useState<AudioLoudnessMeter | null>(null);
+  const [audioPlayer, setAudioPlayer] = useState<WebAudioPlayer | null>(null);
 
   useEffect(() => {
     return () => {
       if (audioMeter) {
         audioMeter.stop();
       }
+      if (audioPlayer) {
+        audioPlayer.dispose();
+      }
     };
-  }, [audioMeter]);
+  }, [audioMeter, audioPlayer]);
 
   const handleRecordClick = async () => {
     if (isRecording) {
@@ -31,7 +36,9 @@ export default function Home() {
     }
 
     const meter = new AudioLoudnessMeter();
+    const player = new WebAudioPlayer();
     setAudioMeter(meter);
+    setAudioPlayer(player);
 
     try {
       await meter.start({
@@ -39,11 +46,21 @@ export default function Home() {
           setCurrentVolume(volume);
           setVolumeInfoCount(prev => prev + 1);
         },
-        onAudioAboveThresholdDetected: () => {
+        onAudioAboveThresholdDetected: async (audioBlob: Blob) => {
           setAudioAboveThresholdCount(prev => prev + 1);
+          try {
+            await player.playAudioBlob(audioBlob);
+          } catch (error) {
+            console.error('Error playing audio:', error);
+          }
         },
-        onSilenceDetected: () => {
+        onSilenceDetected: async () => {
           setSilenceDetectedCount(prev => prev + 1);
+          try {
+            await player.playAudioFile('sounds/confirmation-sound-14.mp3');
+          } catch (error) {
+            console.error('Error playing silence detection sound:', error);
+          }
         },
       });
       setIsRecording(true);
