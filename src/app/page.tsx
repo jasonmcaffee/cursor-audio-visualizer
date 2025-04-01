@@ -49,7 +49,9 @@ export default function Home() {
         onAudioAboveThresholdDetected: async (audioBlob: Blob) => {
           setAudioAboveThresholdCount(prev => prev + 1);
           try {
-            await player.playAudioBlob(audioBlob);
+            await player.playAudioFile('sounds/confirmation-sound-12.mp3');
+            meter.resetSilenceDetection();
+            // await player.playAudioBlob(audioBlob);
           } catch (error) {
             console.error('Error playing audio:', error);
           }
@@ -79,16 +81,13 @@ export default function Home() {
         {isRecording ? 'Stop Recording' : 'Record'}
       </button>
 
-      {isRecording && (
-        <>
-          <LoudnessMeter volume={currentVolume} />
-          <CallbackCounters
-            volumeInfoCount={volumeInfoCount}
-            audioAboveThresholdCount={audioAboveThresholdCount}
-            silenceDetectedCount={silenceDetectedCount}
-          />
-        </>
-      )}
+      {/* do not check if it is recording. always display */}
+      <LoudnessMeter volume={currentVolume} />
+      <CallbackCounters
+        volumeInfoCount={volumeInfoCount}
+        audioAboveThresholdCount={audioAboveThresholdCount}
+        silenceDetectedCount={silenceDetectedCount}
+      />
     </main>
   );
 }
