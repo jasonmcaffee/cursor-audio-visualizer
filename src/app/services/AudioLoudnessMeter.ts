@@ -47,10 +47,10 @@ class AudioLoudnessMeter {
 
   // Configuration options with defaults
   private config = {
-    loudnessThreshold: 5,           // Default loudness threshold (0-100)
+    loudnessThreshold: 2,           // Default loudness threshold (0-100)
     silenceDuration: 1000,          // Duration of silence before callback (ms)
     initialRecordingDuration: 1000, // Initial audio recording duration after trigger (ms)
-    preTriggerBufferDuration: 300,  // Audio to keep before trigger (ms)
+    preTriggerBufferDuration: 20,  // Audio to keep before trigger (ms)
     volumeCheckInterval: 50,        // Interval for volume checking (ms)
     fftSize: 1024,                  // FFT size for analysis
     currentMimeType: 'audio/webm;codecs=opus',
@@ -193,6 +193,7 @@ class AudioLoudnessMeter {
     const bufferLength = this.analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
     let lastLoudnessOverThreshold = false;
+    let silenceStartTime: number | null = null;
 
     this.volumeInterval = window.setInterval(() => {
       if (!this.analyser) return;
@@ -219,11 +220,20 @@ class AudioLoudnessMeter {
       // Handle loudness detection
       if (isLoudnessOverThreshold && !lastLoudnessOverThreshold) {
         this.handleLoudnessDetected();
+        silenceStartTime = null; // Reset silence timer when loudness is detected
       } 
       
       // Handle silence detection
       if (!isLoudnessOverThreshold && lastLoudnessOverThreshold) {
-        this.resetSilenceDetection();
+        // Start timing silence when loudness drops below threshold
+        silenceStartTime = Date.now();
+      } else if (!isLoudnessOverThreshold && silenceStartTime !== null) {
+        // Check if we've been silent for long enough
+        const silenceDuration = Date.now() - silenceStartTime;
+        if (silenceDuration >= this.config.silenceDuration) {
+          this.resetSilenceDetection();
+          silenceStartTime = null;
+        }
       }
       
       lastLoudnessOverThreshold = isLoudnessOverThreshold;
@@ -273,12 +283,13 @@ class AudioLoudnessMeter {
     this.isRecording = true;
     this.lastChunkTimestamp = Date.now();
     
+    const headerChunksToCapture = 1;
     this.mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
         // Store the first few chunks as header chunks if we haven't captured them yet
-        if (!this.hasCapturedHeaders && this.headerChunks.length < 3) {
+        if (!this.hasCapturedHeaders && this.headerChunks.length < headerChunksToCapture) {
           this.headerChunks.push(event.data);
-          if (this.headerChunks.length >= 3) {
+          if (this.headerChunks.length >= headerChunksToCapture) {
             this.hasCapturedHeaders = true;
           }
         }
