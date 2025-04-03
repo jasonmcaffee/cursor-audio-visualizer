@@ -1,0 +1,18 @@
+.meterContainer {
+  width: 40px;
+  height: 200px;
+  background-color: #f0f0f0;
+  border-radius: 20px;
+  overflow: hidden;
+  position: relative;
+  margin: 1rem 0;
+}
+
+.meterBar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background-color: #4CAF50;
+  transition: height 0.1s ease-out;
+} 
