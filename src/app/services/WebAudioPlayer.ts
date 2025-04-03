@@ -45,6 +45,7 @@ class WebAudioPlayer {
   }
 
   async playAudioBlob(audioBlob: Blob): Promise<void> {
+    console.log(`playing audio blob: `, audioBlob)
     try {
       // Stop any currently playing audio
       this.stop();

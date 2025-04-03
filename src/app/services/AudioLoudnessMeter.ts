@@ -1,312 +1,360 @@
 /**
- * A class to analyze audio input for loudness detection
- * Used for detecting spoken keywords like "Alexa" or "Siri"
+ * 
+ * Functionality:
+ * when audio loudness threshold has been crossed, the audio blob sent to the onAudioAboveThresholdDetected callback should include audio that took place N ms (preTriggerBufferDuration) before the volume threshold was crossed.  Refer to this audio blob as initialLoudnessThresholdBlob.
+ * when onSilenceDetected is called, it should pass an audio blob that includes  the initialLoudnessThresholdBlob, as well as all audio that has taken place between that audio and when silence detected was called.
+ * i.e. if I say "hello Sienna", and "hello" is below the loudness threshold, but "Sienna" is above the loudness threshold, I should get an audio blob from onAudioAboveThresholdDetected that includes "hello Sienna".
+ * ie. If I say "hello Sienna how are you today..." and keep talking for N seconds (over the recordingDuration amount), then I should get the full audio of everything that was said from "hello Sienna" until silence was detected.
+ *  We want to get two different audio blobs: the first, as soon as possible, that is the length of the recordingDuration, and includes the initialLoudnessThresholdBlob, then we want to get the full audio of everything that was said until silence is detected.
+ *  This will allow us to send the initial audio blob to Speech to Text, to see if it contains a keyword, like "hey siri", which will activate our use of an LLM, for which we will send the entire audio recording, up until silence, to in order to ask an LLM a question through speech to text.
+ * All audio blobs created should be of the mime type specified. 
+ * 
+ * We will use a single ongoing media recorder to constantly record audio, then slice the audio when needed.
+ * When the loudness threshold is exceeded, we will slice audio from the time that the threshold was exceeded minus the preTriggerBufferDuration. That point will be referred to as the audioStartPoint.  
+ * When silece is detected, after the threshold is exceeded, the audio blob sent to the onSilenceDetected callback will include audio from the audioStartPoint until the time that silence was detected.
+ * once the loudness threshold is crossed, no other loudness threshold events should take place until silence is detected.
+ * All audio slices must have headers that match the mime type specified, and must be playable by the WebAudioPlayer.
  */
+
 class AudioLoudnessMeter {
-    private audioContext: AudioContext | null = null;
-    private mediaStream: MediaStream | null = null;
-    private analyser: AnalyserNode | null = null;
-    private mediaRecorder: MediaRecorder | null = null;
-    private source: MediaStreamAudioSourceNode | null = null;
-    private isRecording: boolean = false;
-    private isAnalyzing: boolean = false;
-    private recordedChunks: Blob[] = [];
-    private silenceTimeout: number | null = null;
-    private volumeInterval: number | null = null;
-    private lastLoudnessTime: number = 0;
+  private audioContext: AudioContext | null = null;
+  private mediaStream: MediaStream | null = null;
+  private analyser: AnalyserNode | null = null;
+  private mediaRecorder: MediaRecorder | null = null;
+  private source: MediaStreamAudioSourceNode | null = null;
   
-    // Callbacks
-    private onAudioAboveThresholdDetected: ((audioBlob: Blob) => void) | null = null;
-    private onPeriodicVolumeInformation: ((volume: number) => void) | null = null;
-    private onSilenceDetected: (() => void) | null = null;
+  // Recording state
+  private isAnalyzing: boolean = false;
+  private isRecording: boolean = false;
+  private isInLoudnessEvent: boolean = false; // Track if we're between threshold crossing and silence
+  private audioStartPoint: number = 0; // Timestamp when threshold was crossed minus preTriggerBufferDuration
   
-    // Configuration options with defaults
-    private config = {
-      loudnessThreshold: 5,          // Default loudness threshold (0-100)
-      silenceDuration: 1000,          // Duration of silence before callback (ms)
-      recordingDuration: 1000,        // Total audio recording duration (ms)
-      preTriggerBufferDuration: 300,  // Audio to keep before trigger (ms)
-      volumeCheckInterval: 50,        // Interval for volume checking (ms)
-      fftSize: 1024,                  // FFT size for analysis
-    };
+  // Audio storage
+  private audioChunks: Blob[] = [];
+  private headerChunks: Blob[] = []; // Store initial chunks with headers
+  private lastChunkTimestamp: number = 0;
+  private hasCapturedHeaders: boolean = false;
   
-    // Supported MIME types in order of preference
-    private static readonly SUPPORTED_MIME_TYPES = [
-      'audio/webm;codecs=opus',
-      'audio/webm',
-      'audio/ogg;codecs=opus',
-      'audio/ogg',
-      'audio/wav',
-    ];
+  // Timers and timestamps
+  private volumeInterval: number | null = null;
+  private silenceTimeout: number | null = null;
+  private lastLoudnessTime: number = 0;
   
-    /**
-     * Creates a new AudioLoudnessMeter
-     * @param config Optional configuration parameters
-     */
-    constructor(config?: Partial<typeof AudioLoudnessMeter.prototype.config>) {
-      if (config) {
-        this.config = { ...this.config, ...config };
-      }
-    }
-  
-    /**
-     * Get the supported MIME type for MediaRecorder
-     */
-    private getSupportedMimeType(): string | null {
-      for (const mimeType of AudioLoudnessMeter.SUPPORTED_MIME_TYPES) {
-        if (MediaRecorder.isTypeSupported(mimeType)) {
-          return mimeType;
-        }
-      }
-      return null;
-    }
-  
-    /**
-     * Start audio analysis and register callbacks
-     */
-    public async start(
-      options: {
-        onAudioAboveThresholdDetected?: (audioBlob: Blob) => void;
-        onPeriodicVolumeInformation?: (volume: number) => void;
-        onSilenceDetected?: () => void;
-      } = {}
-    ): Promise<void> {
-      if (this.isAnalyzing) {
-        console.warn('AudioLoudnessMeter is already running');
-        return;
-      }
-  
-      // Set callbacks
-      this.onAudioAboveThresholdDetected = options.onAudioAboveThresholdDetected || null;
-      this.onPeriodicVolumeInformation = options.onPeriodicVolumeInformation || null;
-      this.onSilenceDetected = options.onSilenceDetected || null;
-  
-      try {
-        // Initialize audio context and get media stream
-        this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        this.mediaStream = await navigator.mediaDevices.getUserMedia({ 
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          } 
-        });
-        
-        // Setup audio analysis
-        this.setupAudioAnalysis();
-        
-        this.isAnalyzing = true;
-      } catch (error) {
-        console.error('Error starting AudioLoudnessMeter:', error);
-        throw error;
-      }
-    }
-  
-    /**
-     * Stop audio analysis and recording
-     */
-    public stop(): void {
-      if (!this.isAnalyzing) {
-        return;
-      }
-  
-      // Clear intervals and timeouts
-      if (this.volumeInterval !== null) {
-        clearInterval(this.volumeInterval);
-        this.volumeInterval = null;
-      }
-  
-      if (this.silenceTimeout !== null) {
-        clearTimeout(this.silenceTimeout);
-        this.silenceTimeout = null;
-      }
-  
-      // Stop recording if active
-      this.stopRecording();
-  
-      // Clean up audio resources
-      if (this.source) {
-        this.source.disconnect();
-        this.source = null;
-      }
-  
-      if (this.analyser) {
-        this.analyser.disconnect();
-        this.analyser = null;
-      }
-  
-      if (this.mediaStream) {
-        this.mediaStream.getTracks().forEach(track => track.stop());
-        this.mediaStream = null;
-      }
-  
-      if (this.audioContext) {
-        this.audioContext.close();
-        this.audioContext = null;
-      }
-  
-      // Reset state
-      this.isAnalyzing = false;
-      this.recordedChunks = [];
-      this.lastLoudnessTime = 0;
-    }
-  
-    /**
-     * Set up audio analysis nodes and start monitoring
-     */
-    private setupAudioAnalysis(): void {
-      if (!this.audioContext || !this.mediaStream) {
-        return;
-      }
-  
-      // Create audio source from media stream
-      this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
-      
-      // Create analyzer
-      this.analyser = this.audioContext.createAnalyser();
-      this.analyser.fftSize = this.config.fftSize;
-      this.analyser.smoothingTimeConstant = 0.3;
-      
-      // Connect source to analyzer
-      this.source.connect(this.analyser);
-      
-      // Start periodic volume checking
-      this.startVolumeChecking();
-    }
-  
-    /**
-     * Start the process of checking volume levels at regular intervals
-     */
-    private startVolumeChecking(): void {
-      if (!this.analyser) {
-        return;
-      }
-  
-      const bufferLength = this.analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
-      let lastLoudnessOverThreshold = false;
-  
-      this.volumeInterval = window.setInterval(() => {
-        if (!this.analyser) return;
-        
-        // Get frequency data
-        this.analyser.getByteFrequencyData(dataArray);
-        
-        // Calculate loudness (average of frequency data)
-        let sum = 0;
-        for (let i = 0; i < bufferLength; i++) {
-          sum += dataArray[i];
-        }
-        const averageLoudness = sum / bufferLength;
-        const normalizedLoudness = (averageLoudness / 255) * 100;
-        
-        // Call the periodic volume information callback
-        if (this.onPeriodicVolumeInformation) {
-          this.onPeriodicVolumeInformation(normalizedLoudness);
-        }
-        
-        // Check if loudness crosses threshold
-        const isLoudnessOverThreshold = normalizedLoudness >= this.config.loudnessThreshold;
-        
-        // Handle loudness detection
-        if (isLoudnessOverThreshold && !lastLoudnessOverThreshold) {
-          this.handleLoudnessDetected();
-        } 
-        
-        // Handle silence detection
-        if (!isLoudnessOverThreshold && lastLoudnessOverThreshold) {
-          this.resetSilenceDetection();
-        }
-        
-        lastLoudnessOverThreshold = isLoudnessOverThreshold;
-      }, this.config.volumeCheckInterval);
-    }
-  
-    /**
-     * Handle when loudness above threshold is detected
-     */
-    private handleLoudnessDetected(): void {
-      // Reset silence detection timeout
-      if (this.silenceTimeout !== null) {
-        clearTimeout(this.silenceTimeout);
-        this.silenceTimeout = null;
-      }
-      
-      // Start recording if not already recording
-      if (!this.isRecording) {
-        this.lastLoudnessTime = Date.now();
-        this.startRecording();
-      }
-    }
-  
-    /**
-     * Start recording audio
-     */
-    private startRecording(): void {
-      if (!this.mediaStream) {
-        return;
-      }
-  
-      const mimeType = this.getSupportedMimeType();
-      if (!mimeType) {
-        console.error('No supported MIME type found for MediaRecorder');
-        return;
-      }
-  
-      this.mediaRecorder = new MediaRecorder(this.mediaStream, {
-        mimeType,
-        audioBitsPerSecond: 128000,
-      });
-      
-      this.recordedChunks = [];
-      this.isRecording = true;
-      
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          this.recordedChunks.push(event.data);
-        }
-      };
-      
-      this.mediaRecorder.onstop = () => {
-        const blob = new Blob(this.recordedChunks, { type: mimeType });
-        if (this.onAudioAboveThresholdDetected) {
-          this.onAudioAboveThresholdDetected(blob);
-        }
-        this.isRecording = false;
-      };
-      
-      // Start recording with a longer duration to ensure we capture pre-trigger audio
-      this.mediaRecorder.start(100); // Collect chunks every 100ms
-      
-      // Stop recording after the specified duration plus pre-trigger time
-      setTimeout(() => {
-        this.stopRecording();
-      }, this.config.recordingDuration + this.config.preTriggerBufferDuration);
-    }
-  
-    /**
-     * Stop the current recording
-     */
-    private stopRecording(): void {
-      if (this.mediaRecorder && this.isRecording) {
-        this.mediaRecorder.stop();
-      }
-    }
-  
-    /**
-     * Reset silence detection timer
-     */
-    public resetSilenceDetection(): void {
-      if (this.silenceTimeout !== null) {
-        clearTimeout(this.silenceTimeout);
-      }
-      
-      this.silenceTimeout = window.setTimeout(() => {
-        if (this.onSilenceDetected) {
-          this.onSilenceDetected();
-        }
-      }, this.config.silenceDuration);
+  // Callbacks
+  private onAudioAboveThresholdDetected: ((audioBlob: Blob) => void) | null = null;
+  private onPeriodicVolumeInformation: ((volume: number) => void) | null = null;
+  private onSilenceDetected: ((completeAudioBlob: Blob) => void) | null = null;
+
+  // Configuration options with defaults
+  private config = {
+    loudnessThreshold: 5,           // Default loudness threshold (0-100)
+    silenceDuration: 1000,          // Duration of silence before callback (ms)
+    initialRecordingDuration: 1000, // Initial audio recording duration after trigger (ms)
+    preTriggerBufferDuration: 300,  // Audio to keep before trigger (ms)
+    volumeCheckInterval: 50,        // Interval for volume checking (ms)
+    fftSize: 1024,                  // FFT size for analysis
+    currentMimeType: 'audio/webm;codecs=opus',
+  };
+
+  // Supported MIME types in order of preference
+  private static readonly SUPPORTED_MIME_TYPES = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/ogg',
+    'audio/wav',
+  ];
+
+  constructor(config?: Partial<typeof AudioLoudnessMeter.prototype.config>) {
+    if (config) {
+      this.config = { ...this.config, ...config };
     }
   }
-  
-  export default AudioLoudnessMeter;
+
+  public async start(
+    options: {
+      onAudioAboveThresholdDetected?: (audioBlob: Blob) => void;
+      onPeriodicVolumeInformation?: (volume: number) => void;
+      onSilenceDetected?: (completeAudioBlob: Blob) => void;
+    } = {}
+  ): Promise<void> {
+    if (this.isAnalyzing) {
+      console.warn('AudioLoudnessMeter is already running');
+      return;
+    }
+
+    // Set callbacks
+    this.onAudioAboveThresholdDetected = options.onAudioAboveThresholdDetected || null;
+    this.onPeriodicVolumeInformation = options.onPeriodicVolumeInformation || null;
+    this.onSilenceDetected = options.onSilenceDetected || null;
+
+    try {
+      // Initialize audio context and get media stream
+      this.audioContext = new (window.AudioContext || ((window as unknown) as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      
+      this.mediaStream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        } 
+      });
+      
+      // Setup audio analysis
+      this.setupAudioAnalysis();
+      
+      // Start continuous recording
+      this.startContinuousRecording();
+      
+      this.isAnalyzing = true;
+    } catch (error) {
+      console.error('Error starting AudioLoudnessMeter:', error);
+      throw error;
+    }
+  }
+
+  public stop(): void {
+    if (!this.isAnalyzing) {
+      return;
+    }
+
+    // Clear intervals and timeouts
+    if (this.volumeInterval !== null) {
+      clearInterval(this.volumeInterval);
+      this.volumeInterval = null;
+    }
+
+    if (this.silenceTimeout !== null) {
+      clearTimeout(this.silenceTimeout);
+      this.silenceTimeout = null;
+    }
+
+    // Stop recording
+    this.stopRecording();
+
+    // Clean up audio resources
+    if (this.source) {
+      this.source.disconnect();
+      this.source = null;
+    }
+
+    if (this.analyser) {
+      this.analyser.disconnect();
+      this.analyser = null;
+    }
+
+    if (this.mediaStream) {
+      this.mediaStream.getTracks().forEach(track => track.stop());
+      this.mediaStream = null;
+    }
+
+    if (this.audioContext) {
+      this.audioContext.close();
+      this.audioContext = null;
+    }
+
+    // Reset state
+    this.isAnalyzing = false;
+    this.isRecording = false;
+    this.isInLoudnessEvent = false;
+    this.audioStartPoint = 0;
+    this.audioChunks = [];
+    this.headerChunks = [];
+    this.lastChunkTimestamp = 0;
+    this.hasCapturedHeaders = false;
+    this.lastLoudnessTime = 0;
+  }
+
+  private setupAudioAnalysis(): void {
+    if (!this.audioContext || !this.mediaStream) {
+      return;
+    }
+
+    // Create audio source from media stream
+    this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
+    
+    // Create analyzer
+    this.analyser = this.audioContext.createAnalyser();
+    this.analyser.fftSize = this.config.fftSize;
+    this.analyser.smoothingTimeConstant = 0.3;
+    
+    // Connect source to analyzer
+    this.source.connect(this.analyser);
+    
+    // Start periodic volume checking
+    this.startVolumeChecking();
+  }
+
+  private startVolumeChecking(): void {
+    if (!this.analyser) {
+      return;
+    }
+
+    const bufferLength = this.analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    let lastLoudnessOverThreshold = false;
+
+    this.volumeInterval = window.setInterval(() => {
+      if (!this.analyser) return;
+      
+      // Get frequency data
+      this.analyser.getByteFrequencyData(dataArray);
+      
+      // Calculate loudness (average of frequency data)
+      let sum = 0;
+      for (let i = 0; i < bufferLength; i++) {
+        sum += dataArray[i];
+      }
+      const averageLoudness = sum / bufferLength;
+      const normalizedLoudness = (averageLoudness / 255) * 100;
+      
+      // Call the periodic volume information callback
+      if (this.onPeriodicVolumeInformation) {
+        this.onPeriodicVolumeInformation(normalizedLoudness);
+      }
+      
+      // Check if loudness crosses threshold
+      const isLoudnessOverThreshold = normalizedLoudness >= this.config.loudnessThreshold;
+      
+      // Handle loudness detection
+      if (isLoudnessOverThreshold && !lastLoudnessOverThreshold) {
+        this.handleLoudnessDetected();
+      } 
+      
+      // Handle silence detection
+      if (!isLoudnessOverThreshold && lastLoudnessOverThreshold) {
+        this.resetSilenceDetection();
+      }
+      
+      lastLoudnessOverThreshold = isLoudnessOverThreshold;
+    }, this.config.volumeCheckInterval);
+  }
+
+  private handleLoudnessDetected(): void {
+    // Only handle loudness detection if we're not already in a loudness event
+    if (this.isInLoudnessEvent) {
+      return;
+    }
+
+    // Reset silence detection timeout
+    if (this.silenceTimeout !== null) {
+      clearTimeout(this.silenceTimeout);
+      this.silenceTimeout = null;
+    }
+    
+    // Set the audio start point (threshold time minus pre-trigger buffer)
+    this.audioStartPoint = Date.now() - this.config.preTriggerBufferDuration;
+    this.isInLoudnessEvent = true;
+    
+    // After initial recording duration, send the initial blob
+    setTimeout(() => {
+      if (this.isRecording) {
+        this.sendInitialBlob();
+      }
+    }, this.config.initialRecordingDuration);
+  }
+
+  private startContinuousRecording(): void {
+    if (!this.mediaStream) {
+      return;
+    }
+
+    // Create recorder
+    this.mediaRecorder = new MediaRecorder(this.mediaStream, {
+      mimeType: this.config.currentMimeType,
+      audioBitsPerSecond: 128000,
+    });
+    
+    // Reset audio chunks but keep header chunks if we have them
+    this.audioChunks = [];
+    if (!this.hasCapturedHeaders) {
+      this.headerChunks = [];
+    }
+    this.isRecording = true;
+    this.lastChunkTimestamp = Date.now();
+    
+    this.mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        // Store the first few chunks as header chunks if we haven't captured them yet
+        if (!this.hasCapturedHeaders && this.headerChunks.length < 3) {
+          this.headerChunks.push(event.data);
+          if (this.headerChunks.length >= 3) {
+            this.hasCapturedHeaders = true;
+          }
+        }
+        
+        this.audioChunks.push(event.data);
+        this.lastChunkTimestamp = Date.now();
+      }
+    };
+    
+    // Start recording with small time slices for precise control
+    this.mediaRecorder.start(100);
+  }
+
+  private stopRecording(): void {
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.stop();
+    }
+    this.isRecording = false;
+  }
+
+  private sendInitialBlob(): void {
+    if (!this.isRecording || this.audioChunks.length === 0) {
+      return;
+    }
+
+    // Find chunks that fall within our time window
+    const relevantChunks = this.audioChunks.filter((_, index) => {
+      const chunkTime = this.lastChunkTimestamp - (this.audioChunks.length - index - 1) * 100;
+      return chunkTime >= this.audioStartPoint && 
+             chunkTime <= this.audioStartPoint + this.config.initialRecordingDuration;
+    });
+
+    if (relevantChunks.length > 0) {
+      // Create blob with headers first, then relevant chunks
+      const initialBlob = new Blob([...this.headerChunks, ...relevantChunks], { type: this.config.currentMimeType });
+      if (this.onAudioAboveThresholdDetected) {
+        this.onAudioAboveThresholdDetected(initialBlob);
+      }
+    }
+  }
+
+  private sendCompleteBlob(): void {
+    if (!this.isRecording || this.audioChunks.length === 0) {
+      return;
+    }
+
+    // Find chunks from audioStartPoint until now
+    const relevantChunks = this.audioChunks.filter((_, index) => {
+      const chunkTime = this.lastChunkTimestamp - (this.audioChunks.length - index - 1) * 100;
+      return chunkTime >= this.audioStartPoint;
+    });
+
+    if (relevantChunks.length > 0) {
+      // Create blob with headers first, then relevant chunks
+      const completeBlob = new Blob([...this.headerChunks, ...relevantChunks], { type: this.config.currentMimeType });
+      if (this.onSilenceDetected) {
+        this.onSilenceDetected(completeBlob);
+      }
+    }
+  }
+
+  public resetSilenceDetection(): void {
+    if (this.silenceTimeout !== null) {
+      clearTimeout(this.silenceTimeout);
+    }
+
+    this.silenceTimeout = window.setTimeout(() => {
+      if (this.isRecording) {
+        this.sendCompleteBlob();
+        this.stopRecording();
+        this.isInLoudnessEvent = false; // Reset the flag after silence is detected
+        // Restart recording after silence is detected
+        this.startContinuousRecording();
+      }
+    }, this.config.silenceDuration);
+  }
+}
+
+export default AudioLoudnessMeter;

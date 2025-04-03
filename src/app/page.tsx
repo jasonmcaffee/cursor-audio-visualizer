@@ -50,16 +50,17 @@ export default function Home() {
           setAudioAboveThresholdCount(prev => prev + 1);
           try {
             // await player.playAudioFile('sounds/confirmation-sound-12.mp3');
-            meter.resetSilenceDetection();
+            // meter.resetSilenceDetection();
             await player.playAudioBlob(audioBlob);
           } catch (error) {
             console.error('Error playing audio:', error);
           }
         },
-        onSilenceDetected: async () => {
+        onSilenceDetected: async (audioBlob: Blob) => {
+          // await player.playAudioBlob(audioBlob);
           setSilenceDetectedCount(prev => prev + 1);
           try {
-            await player.playAudioFile('sounds/confirmation-sound-14.mp3');
+            // await player.playAudioFile('sounds/confirmation-sound-14.mp3');
           } catch (error) {
             console.error('Error playing silence detection sound:', error);
           }
