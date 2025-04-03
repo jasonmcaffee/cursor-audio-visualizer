@@ -49,9 +49,9 @@ export default function Home() {
         onAudioAboveThresholdDetected: async (audioBlob: Blob) => {
           setAudioAboveThresholdCount(prev => prev + 1);
           try {
-            await player.playAudioFile('sounds/confirmation-sound-12.mp3');
+            // await player.playAudioFile('sounds/confirmation-sound-12.mp3');
             meter.resetSilenceDetection();
-            // await player.playAudioBlob(audioBlob);
+            await player.playAudioBlob(audioBlob);
           } catch (error) {
             console.error('Error playing audio:', error);
           }
