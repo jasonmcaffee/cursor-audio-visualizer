@@ -11,9 +11,9 @@ class AudioLoudnessMeter {
     private isRecording: boolean = false;
     private isAnalyzing: boolean = false;
     private recordedChunks: Blob[] = [];
-    private audioBufferCache: Blob[] = [];
     private silenceTimeout: number | null = null;
     private volumeInterval: number | null = null;
+    private lastLoudnessTime: number = 0;
   
     // Callbacks
     private onAudioAboveThresholdDetected: ((audioBlob: Blob) => void) | null = null;
@@ -22,10 +22,10 @@ class AudioLoudnessMeter {
   
     // Configuration options with defaults
     private config = {
-      loudnessThreshold: 3,          // Default loudness threshold (0-100)
-      silenceDuration: 3000,          // Duration of silence before callback (ms)
-      recordingDuration: 2000,        // Total audio recording duration (ms)
-      preTriggerBufferDuration: 500,  // Audio to keep before trigger (ms)
+      loudnessThreshold: 5,          // Default loudness threshold (0-100)
+      silenceDuration: 1000,          // Duration of silence before callback (ms)
+      recordingDuration: 1000,        // Total audio recording duration (ms)
+      preTriggerBufferDuration: 300,  // Audio to keep before trigger (ms)
       volumeCheckInterval: 50,        // Interval for volume checking (ms)
       fftSize: 1024,                  // FFT size for analysis
     };
@@ -95,9 +95,6 @@ class AudioLoudnessMeter {
         // Setup audio analysis
         this.setupAudioAnalysis();
         
-        // Setup pre-trigger buffer
-        this.setupAudioBuffering();
-        
         this.isAnalyzing = true;
       } catch (error) {
         console.error('Error starting AudioLoudnessMeter:', error);
@@ -150,8 +147,8 @@ class AudioLoudnessMeter {
   
       // Reset state
       this.isAnalyzing = false;
-      this.audioBufferCache = [];
       this.recordedChunks = [];
+      this.lastLoudnessTime = 0;
     }
   
     /**
@@ -226,43 +223,6 @@ class AudioLoudnessMeter {
     }
   
     /**
-     * Set up audio buffering for pre-trigger recording
-     */
-    private setupAudioBuffering(): void {
-      if (!this.mediaStream) {
-        return;
-      }
-  
-      const mimeType = this.getSupportedMimeType();
-      if (!mimeType) {
-        console.error('No supported MIME type found for MediaRecorder');
-        return;
-      }
-  
-      const bufferRecorder = new MediaRecorder(this.mediaStream, {
-        mimeType,
-        audioBitsPerSecond: 128000,
-      });
-      
-      // Calculate buffer chunk duration based on pre-trigger buffer needs
-      const bufferChunkDuration = Math.min(this.config.preTriggerBufferDuration / 3, 200);
-      
-      bufferRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          this.audioBufferCache.push(event.data);
-          
-          // Maintain buffer length to cover pre-trigger duration
-          const maxBufferItems = Math.ceil(this.config.preTriggerBufferDuration / bufferChunkDuration) + 1;
-          if (this.audioBufferCache.length > maxBufferItems) {
-            this.audioBufferCache.shift();
-          }
-        }
-      };
-      
-      bufferRecorder.start(bufferChunkDuration);
-    }
-  
-    /**
      * Handle when loudness above threshold is detected
      */
     private handleLoudnessDetected(): void {
@@ -274,12 +234,8 @@ class AudioLoudnessMeter {
       
       // Start recording if not already recording
       if (!this.isRecording) {
+        this.lastLoudnessTime = Date.now();
         this.startRecording();
-        
-        // Stop recording after the specified duration
-        setTimeout(() => {
-          this.stopRecording();
-        }, this.config.recordingDuration);
       }
     }
   
@@ -319,7 +275,13 @@ class AudioLoudnessMeter {
         this.isRecording = false;
       };
       
-      this.mediaRecorder.start();
+      // Start recording with a longer duration to ensure we capture pre-trigger audio
+      this.mediaRecorder.start(100); // Collect chunks every 100ms
+      
+      // Stop recording after the specified duration plus pre-trigger time
+      setTimeout(() => {
+        this.stopRecording();
+      }, this.config.recordingDuration + this.config.preTriggerBufferDuration);
     }
   
     /**
