@@ -14,6 +14,9 @@
  * When silece is detected, after the threshold is exceeded, the audio blob sent to the onSilenceDetected callback will include audio from the audioStartPoint until the time that silence was detected.
  * once the loudness threshold is crossed, no other loudness threshold events should take place until silence is detected.
  * All audio slices must have headers that match the mime type specified, and must be playable by the WebAudioPlayer.
+ * 
+ * IMPORTANT: We must use a single MediaRecorder instance throughout the entire lifecycle. Never create multiple MediaRecorders
+ * as this will cause issues with audio format and headers. All audio slicing must be done using the chunks from this single recorder.
  */
 
 class AudioLoudnessMeter {
@@ -283,13 +286,12 @@ class AudioLoudnessMeter {
     this.isRecording = true;
     this.lastChunkTimestamp = Date.now();
     
-    const headerChunksToCapture = 1;
     this.mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
         // Store the first few chunks as header chunks if we haven't captured them yet
-        if (!this.hasCapturedHeaders && this.headerChunks.length < headerChunksToCapture) {
+        if (!this.hasCapturedHeaders && this.headerChunks.length < 3) {
           this.headerChunks.push(event.data);
-          if (this.headerChunks.length >= headerChunksToCapture) {
+          if (this.headerChunks.length >= 3) {
             this.hasCapturedHeaders = true;
           }
         }
