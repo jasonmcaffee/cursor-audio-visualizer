@@ -5,6 +5,40 @@
   justify-content: center;
   min-height: 100vh;
   padding: 2rem;
+  gap: 1rem;
+}
+
+.playButton {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 2rem;
+  font-size: 1.2rem;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.playButton:hover {
+  background-color: #45a049;
+}
+
+.playButton:active {
+  transform: scale(0.98);
+}
+
+.playButton:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.playButton.playing {
+  background-color: #388E3C;
+  animation: pulse-green 1.5s infinite;
 }
 
 .recordButton {
@@ -21,20 +55,26 @@
   transition: all 0.2s;
 }
 
-.recordButton:hover {
+.recordButton:hover:not(:disabled) {
   background-color: #ff6666;
 }
 
-.recordButton:active {
+.recordButton:active:not(:disabled) {
   transform: scale(0.98);
+}
+
+.recordButton:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .recordButton.recording {
   background-color: #ff0000;
-  animation: pulse 1.5s infinite;
+  animation: pulse-red 1.5s infinite;
 }
 
-@keyframes pulse {
+@keyframes pulse-red {
   0% {
     box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4);
   }
@@ -43,5 +83,17 @@
   }
   100% {
     box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
+  }
+}
+
+@keyframes pulse-green {
+  0% {
+    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
   }
 } 

@@ -50,7 +50,7 @@ class AudioLoudnessMeter {
 
   // Configuration options with defaults
   private config = {
-    loudnessThreshold: 2,           // Default loudness threshold (0-100)
+    loudnessThreshold: 5,           // Default loudness threshold (0-100)
     silenceDuration: 1000,          // Duration of silence before callback (ms)
     initialRecordingDuration: 1000, // Initial audio recording duration after trigger (ms)
     preTriggerBufferDuration: 20,  // Audio to keep before trigger (ms)
@@ -97,9 +97,9 @@ class AudioLoudnessMeter {
       
       this.mediaStream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
         } 
       });
       

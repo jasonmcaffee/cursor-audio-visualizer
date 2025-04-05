@@ -1,6 +1,6 @@
 'use client';
 
-import { FaMicrophone } from 'react-icons/fa';
+import { FaMicrophone, FaPlay, FaPause } from 'react-icons/fa';
 import { useState, useEffect } from 'react';
 import styles from './page.module.css';
 import LoudnessMeter from './components/LoudnessMeter';
@@ -16,17 +16,34 @@ export default function Home() {
   const [silenceDetectedCount, setSilenceDetectedCount] = useState(0);
   const [audioMeter, setAudioMeter] = useState<AudioLoudnessMeter | null>(null);
   const [audioPlayer, setAudioPlayer] = useState<WebAudioPlayer | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
+    const player = new WebAudioPlayer();
+    setAudioPlayer(player);
     return () => {
       if (audioMeter) {
         audioMeter.stop();
       }
-      if (audioPlayer) {
-        audioPlayer.dispose();
+      if (player) {
+        player.dispose();
       }
     };
-  }, [audioMeter, audioPlayer]);
+  }, [audioMeter]);
+
+  const handlePlayClick = async () => {
+    if (!audioPlayer) return;
+    if (isPlaying) {
+      audioPlayer.stop();
+    } else {
+      try {
+        await audioPlayer.playAudioFile('sounds/Alan Watts - Buddhism Religion of No Religion  1.mp3');
+      } catch (error) {
+        console.error('Error playing audio file:', error);
+      }
+    }
+    setIsPlaying(!isPlaying);
+  };
 
   const handleRecordClick = async () => {
     if (isRecording) {
@@ -51,12 +68,14 @@ export default function Home() {
           try {
             // await player.playAudioFile('sounds/confirmation-sound-12.mp3');
             // meter.resetSilenceDetection();
+            console.log('audio above threshold detected');
             await player.playAudioBlob(audioBlob);
           } catch (error) {
             console.error('Error playing audio:', error);
           }
         },
         onSilenceDetected: async (audioBlob: Blob) => {
+          console.log('silence detected');
           await player.playAudioBlob(audioBlob);
           setSilenceDetectedCount(prev => prev + 1);
           try {
@@ -75,6 +94,14 @@ export default function Home() {
   return (
     <main className={styles.container}>
       <button 
+        className={`${styles.playButton} ${isPlaying ? styles.playing : ''}`}
+        onClick={handlePlayClick}
+      >
+        {isPlaying ? <FaPause /> : <FaPlay />}
+        {isPlaying ? 'Pause' : 'Play Alan Watts'}
+      </button>
+
+      <button 
         className={`${styles.recordButton} ${isRecording ? styles.recording : ''}`}
         onClick={handleRecordClick}
       >
@@ -92,3 +119,4 @@ export default function Home() {
     </main>
   );
 }
+
