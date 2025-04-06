@@ -60,6 +60,7 @@ class AudioLoudnessMeter {
     echoCancellation: false,
     noiseSuppression: false,
     autoGainControl: false,
+    mediaStreamTimeSlice: 50,
   };
 
   // Supported MIME types in order of preference
@@ -269,7 +270,7 @@ class AudioLoudnessMeter {
     };
     
     // Start recording with small time slices for precise control
-    this.mediaRecorder.start(100);
+    this.mediaRecorder.start(this.config.mediaStreamTimeSlice);
   }
 
   private stopRecording(): void {
@@ -286,7 +287,7 @@ class AudioLoudnessMeter {
 
     // Find chunks that fall within our time window
     const relevantChunks = this.audioChunks.filter((_, index) => {
-      const chunkTime = this.lastChunkTimestamp - (this.audioChunks.length - index - 1) * 100;
+      const chunkTime = this.lastChunkTimestamp - (this.audioChunks.length - index - 1) * this.config.mediaStreamTimeSlice;
       return chunkTime >= this.audioStartPoint && 
              chunkTime <= this.audioStartPoint + this.config.initialRecordingDuration;
     });
@@ -307,7 +308,7 @@ class AudioLoudnessMeter {
 
     // Find chunks from audioStartPoint until now
     const relevantChunks = this.audioChunks.filter((_, index) => {
-      const chunkTime = this.lastChunkTimestamp - (this.audioChunks.length - index - 1) * 100;
+      const chunkTime = this.lastChunkTimestamp - (this.audioChunks.length - index - 1) * this.config.mediaStreamTimeSlice;
       return chunkTime >= this.audioStartPoint;
     });
 
