@@ -35,8 +35,8 @@ class WebAudioPlayer {
       } catch (error) {
         console.error('Error playing audio file directly:', error);
         // If direct playback fails, try converting the format
-        const convertedBlob = await this.convertAudioFormat(audioBlob);
-        await this.playAudioBlob(convertedBlob);
+        // const convertedBlob = await this.convertAudioFormat(audioBlob);
+        // await this.playAudioBlob(convertedBlob);
       }
     } catch (error) {
       console.error('Error playing audio file:', error);
@@ -47,24 +47,10 @@ class WebAudioPlayer {
   async playAudioBlob(audioBlob: Blob): Promise<void> {
     console.log(`playing audio blob: `, audioBlob)
     try {
-      // Stop any currently playing audio
       this.stop();
-
-      // Convert blob to array buffer
       const arrayBuffer = await audioBlob.arrayBuffer();
-      
-      // Try to decode the audio data
-      try {
-        this.audioBuffer = await this.audioContext!.decodeAudioData(arrayBuffer);
-      } catch (decodeError) {
-        console.error('Error decoding audio data:', decodeError);
-        // Try to convert the audio format if needed
-        const convertedBlob = await this.convertAudioFormat(audioBlob);
-        const convertedArrayBuffer = await convertedBlob.arrayBuffer();
-        this.audioBuffer = await this.audioContext!.decodeAudioData(convertedArrayBuffer);
-      }
-      
-      // Create and configure the source
+      this.audioBuffer = await this.audioContext!.decodeAudioData(arrayBuffer);
+
       this.source = this.audioContext!.createBufferSource();
       this.source.buffer = this.audioBuffer;
       
@@ -79,55 +65,6 @@ class WebAudioPlayer {
     }
   }
 
-  private async convertAudioFormat(audioBlob: Blob): Promise<Blob> {
-    // Create a temporary audio element to convert the format
-    const audio = new Audio() as HTMLAudioElement & { captureStream: () => MediaStream };
-    const objectUrl = URL.createObjectURL(audioBlob);
-    audio.src = objectUrl;
-
-    return new Promise((resolve, reject) => {
-      audio.oncanplaythrough = async () => {
-        try {
-          // Create a MediaRecorder to capture the converted audio
-          const mediaStream = audio.captureStream();
-          const recorder = new MediaRecorder(mediaStream, {
-            mimeType: 'audio/webm;codecs=opus',
-            audioBitsPerSecond: 128000,
-          });
-
-          const chunks: Blob[] = [];
-          recorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-              chunks.push(event.data);
-            }
-          };
-
-          recorder.onstop = () => {
-            const convertedBlob = new Blob(chunks, { type: 'audio/webm;codecs=opus' });
-            URL.revokeObjectURL(objectUrl);
-            resolve(convertedBlob);
-          };
-
-          // Start recording and play the audio
-          recorder.start();
-          await audio.play();
-
-          // Stop recording after the audio finishes playing
-          audio.onended = () => {
-            recorder.stop();
-          };
-        } catch (error) {
-          URL.revokeObjectURL(objectUrl);
-          reject(error);
-        }
-      };
-
-      audio.onerror = (error) => {
-        URL.revokeObjectURL(objectUrl);
-        reject(error);
-      };
-    });
-  }
 
   stop(): void {
     if (this.source) {

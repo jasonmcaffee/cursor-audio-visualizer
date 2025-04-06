@@ -17,6 +17,7 @@ export default function Home() {
   const [audioMeter, setAudioMeter] = useState<AudioLoudnessMeter | null>(null);
   const [audioPlayer, setAudioPlayer] = useState<WebAudioPlayer | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const baselineVolume = 1.0; // Maximum volume
 
   useEffect(() => {
     const player = new WebAudioPlayer();
@@ -31,12 +32,21 @@ export default function Home() {
     };
   }, [audioMeter]);
 
+  // Update volume when currentVolume changes and we're playing
+  useEffect(() => {
+    if (isPlaying && audioPlayer) {
+      
+     
+    }
+  }, [currentVolume, isPlaying]);
+
   const handlePlayClick = async () => {
     if (!audioPlayer) return;
     if (isPlaying) {
       audioPlayer.stop();
     } else {
       try {
+        audioPlayer.setVolume(baselineVolume);
         await audioPlayer.playAudioFile('sounds/Alan Watts - Buddhism Religion of No Religion  1.mp3');
       } catch (error) {
         console.error('Error playing audio file:', error);
