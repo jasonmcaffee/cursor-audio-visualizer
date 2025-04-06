@@ -1,5 +1,6 @@
 export default class QueuedWebAudioPlayer {
     private audioContext: AudioContext | undefined;
+    private gainNode: GainNode | undefined;
     // sourceQueue holds decoded audio sources waiting to be played
     private sourceQueue: AudioBufferSourceNode[] = [];
     private currentSource: AudioBufferSourceNode | undefined;
@@ -10,7 +11,18 @@ export default class QueuedWebAudioPlayer {
     private speed: number = 1.0;
     private hasMoreAudioChunks: boolean = true;
     private enqueueProcessingPromise: Promise<void> = Promise.resolve();
-    constructor() {}
+
+    constructor() {
+        this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        this.gainNode = this.audioContext.createGain();
+        this.gainNode.connect(this.audioContext.destination);
+    }
+
+    setVolume(volume: number): void {
+        if (this.gainNode) {
+            this.gainNode.gain.value = volume;
+        }
+    }
 
     async enqueueAudio(audio: Blob) {
         // Chain this processing to the previous enqueue operation to ensure sequential processing
@@ -19,6 +31,8 @@ export default class QueuedWebAudioPlayer {
                 console.log(`Processing new audio chunk`);
                 if(!this.audioContext){
                     this.audioContext = new AudioContext();
+                    this.gainNode = this.audioContext.createGain();
+                    this.gainNode.connect(this.audioContext.destination);
                 }
                 const arrayBuffer = await audio.arrayBuffer();
                 const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
@@ -26,7 +40,7 @@ export default class QueuedWebAudioPlayer {
                 const source = this.audioContext.createBufferSource();
                 source.buffer = audioBuffer;
                 source.playbackRate.value = this.speed;
-                source.connect(this.audioContext.destination);
+                source.connect(this.gainNode!);
 
                 this.sourceQueue.push(source);
                 // If the player has been started and nothing is currently playing,
@@ -44,6 +58,7 @@ export default class QueuedWebAudioPlayer {
     }
 
     private playNext() {
+        console.log(`playNext`);
         if(!this.hasMoreAudioChunks && this.sourceQueue.length === 0){
             this.stop();
             return;
@@ -75,8 +90,11 @@ export default class QueuedWebAudioPlayer {
 
     play() {
         this.stop();
+        console.log(`play`);
         if(!this.audioContext){
             this.audioContext = new AudioContext();
+            this.gainNode = this.audioContext.createGain();
+            this.gainNode.connect(this.audioContext.destination);
         }
         if (this.audioContext.state === 'suspended') {
             this.audioContext.resume();
@@ -126,4 +144,13 @@ export default class QueuedWebAudioPlayer {
         this.isAudioBufferPlaying = false;
         this.isPlaying = false;
     }
+    
+    dispose(): void {
+        this.stop();
+        if (this.audioContext) {
+            this.audioContext.close();
+            this.audioContext = undefined;
+        }
+    }
+  
 }

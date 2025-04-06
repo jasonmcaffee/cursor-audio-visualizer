@@ -6,7 +6,13 @@ import styles from './page.module.css';
 import LoudnessMeter from './components/LoudnessMeter';
 import CallbackCounters from './components/CallbackCounters';
 import AudioLoudnessMeter from './services/AudioLoudnessMeter';
+import QueuedWebAudioPlayer from './services/QueuedWebAudioPlayer';
 import WebAudioPlayer from './services/WebAudioPlayer';
+
+const webAudioPlayer = new WebAudioPlayer();
+const queuedWebAudioPlayer = new QueuedWebAudioPlayer();
+const audioLoudnessMeter = new AudioLoudnessMeter();
+queuedWebAudioPlayer.play();
 
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
@@ -14,40 +20,27 @@ export default function Home() {
   const [volumeInfoCount, setVolumeInfoCount] = useState(0);
   const [audioAboveThresholdCount, setAudioAboveThresholdCount] = useState(0);
   const [silenceDetectedCount, setSilenceDetectedCount] = useState(0);
-  const [audioMeter, setAudioMeter] = useState<AudioLoudnessMeter | null>(null);
-  const [audioPlayer, setAudioPlayer] = useState<WebAudioPlayer | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const baselineVolume = 1.0; // Maximum volume
 
-  useEffect(() => {
-    const player = new WebAudioPlayer();
-    setAudioPlayer(player);
-    return () => {
-      if (audioMeter) {
-        audioMeter.stop();
-      }
-      if (player) {
-        player.dispose();
-      }
-    };
-  }, [audioMeter]);
 
   // Update volume when currentVolume changes and we're playing
   useEffect(() => {
-    if (isPlaying && audioPlayer) {
-      
-     
+    if (isPlaying && webAudioPlayer) {
+      // const newVolume = Math.max(0, baselineVolume - currentVolume);
+      // audioPlayer.setVolume(newVolume);
     }
   }, [currentVolume, isPlaying]);
 
   const handlePlayClick = async () => {
-    if (!audioPlayer) return;
+    if (!webAudioPlayer) return;
     if (isPlaying) {
-      audioPlayer.stop();
+      webAudioPlayer.stop();
     } else {
       try {
-        audioPlayer.setVolume(baselineVolume);
-        await audioPlayer.playAudioFile('sounds/Alan Watts - Buddhism Religion of No Religion  1.mp3');
+        webAudioPlayer.setVolume(baselineVolume);
+        await webAudioPlayer.playAudioFile('sounds/Alan Watts - Buddhism Religion of No Religion  1.mp3');
+       
       } catch (error) {
         console.error('Error playing audio file:', error);
       }
@@ -57,18 +50,14 @@ export default function Home() {
 
   const handleRecordClick = async () => {
     if (isRecording) {
-      audioMeter?.stop();
+      audioLoudnessMeter?.stop();
       setIsRecording(false);
       return;
     }
 
-    const meter = new AudioLoudnessMeter();
-    const player = new WebAudioPlayer();
-    setAudioMeter(meter);
-    setAudioPlayer(player);
 
     try {
-      await meter.start({
+      await audioLoudnessMeter.start({
         onPeriodicVolumeInformation: (volume: number) => {
           setCurrentVolume(volume);
           setVolumeInfoCount(prev => prev + 1);
@@ -76,23 +65,17 @@ export default function Home() {
         onAudioAboveThresholdDetected: async (audioBlob: Blob) => {
           setAudioAboveThresholdCount(prev => prev + 1);
           try {
-            // await player.playAudioFile('sounds/confirmation-sound-12.mp3');
-            // meter.resetSilenceDetection();
             console.log('audio above threshold detected');
-            await player.playAudioBlob(audioBlob);
+            await queuedWebAudioPlayer.enqueueAudio(audioBlob);
+            
           } catch (error) {
             console.error('Error playing audio:', error);
           }
         },
         onSilenceDetected: async (audioBlob: Blob) => {
           console.log('silence detected');
-          await player.playAudioBlob(audioBlob);
+          await queuedWebAudioPlayer.enqueueAudio(audioBlob);
           setSilenceDetectedCount(prev => prev + 1);
-          try {
-            // await player.playAudioFile('sounds/confirmation-sound-14.mp3');
-          } catch (error) {
-            console.error('Error playing silence detection sound:', error);
-          }
         },
       });
       setIsRecording(true);

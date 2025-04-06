@@ -57,6 +57,9 @@ class AudioLoudnessMeter {
     volumeCheckInterval: 50,        // Interval for volume checking (ms)
     fftSize: 1024,                  // FFT size for analysis
     currentMimeType: 'audio/webm;codecs=opus',
+    echoCancellation: true,
+    noiseSuppression: false,
+    autoGainControl: false,
   };
 
   // Supported MIME types in order of preference
@@ -97,9 +100,9 @@ class AudioLoudnessMeter {
       
       this.mediaStream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
+          echoCancellation: this.config.echoCancellation,
+          noiseSuppression: this.config.noiseSuppression,
+          autoGainControl: this.config.autoGainControl,
         } 
       });
       
