@@ -10,16 +10,16 @@ import WebAudioPlayer from "./WebAudioPlayer";
 export default class VoiceCommandSensitiveAudioPlayer {
     
     private config = {
-        loudnessThreshold: 20,
-        preTriggerBufferDuration: 1,
+        loudnessThreshold: 10,
+        preTriggerBufferDuration: 20,
         initialRecordingDuration: 1000,
-        volumeCheckInterval: 10,
+        volumeCheckInterval: 50,
         fftSize: 1024,
         currentMimeType: 'audio/webm;codecs=opus',
         audioPlayerVolume: 1.0,
-        echoCancellation: false, //removes audio from speakers.
-        noiseSuppression: false, //Constant sounds like fans, keyboard clacking, air conditioning hum, etc.
-        autoGainControl: false, //If you're speaking quietly → it will boost your voice.
+        echoCancellation: true, //removes audio from speakers.
+        noiseSuppression: true, //Constant sounds like fans, keyboard clacking, air conditioning hum, etc.
+        autoGainControl: true, //If you're speaking quietly → it will boost your voice.
     };
 
     private pauseDueToAudioLoundessThresholdExceededIntervalId: number | undefined;
