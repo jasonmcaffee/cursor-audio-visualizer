@@ -1,4 +1,4 @@
-import WebAudioPlayer from "./WebAudioPlayer";
+import QueuedWebAudioPlayer from "./QueuedWebAudioPlayer";
 import AudioLoudnessMeter from "./AudioLoudnessMeter";
 /**
  * Listen for voice commands from the user by monitoring audio loudness via the AudioLoudnessMeter.
@@ -7,8 +7,7 @@ import AudioLoudnessMeter from "./AudioLoudnessMeter";
  * without having the audio interfere. 
  */
 export default class VoiceCommandSensitiveAudioPlayer {
-    private audioPlayer: WebAudioPlayer;
-    private meter: AudioLoudnessMeter;
+    
     private config = {
         loudnessThreshold: 5,
         preTriggerBufferDuration: 20,
@@ -17,31 +16,57 @@ export default class VoiceCommandSensitiveAudioPlayer {
         fftSize: 1024,
         currentMimeType: 'audio/webm;codecs=opus',
         audioPlayerVolume: 1.0,
-        duckingFactor: 0.5,
-    }
-
-    async playAudioFile(filePath: string): Promise<void> {
-        this.audioPlayer.playAudioFile(filePath);
-    }
-    async playAudioBlob(audioBlob: Blob): Promise<void> {
-        this.audioPlayer.playAudioBlob(audioBlob);
-    }
-
-    async startListening(): Promise<void> {
-        this.meter.start();
-    }
-
-    async stopListening(): Promise<void> {
-        this.meter.stop();
-    }
     
-    private handleLoudnessDetected(): void {
-        this.audioPlayer.setVolume(0.5);
+    };
+
+    constructor(
+        private queuedWebAudioPlayer: QueuedWebAudioPlayer = new QueuedWebAudioPlayer(), 
+        private audioLoudnessMeter: AudioLoudnessMeter = new AudioLoudnessMeter(),
+        config?: Partial<typeof VoiceCommandSensitiveAudioPlayer.prototype.config>
+    ) {
+        if (config) {
+            this.config = { ...this.config, ...config };
+        }
     }
 
-    private handleSilenceDetected(): void {
-        this.audioPlayer.setVolume(this.config.audioPlayerVolume);
+    async enqueueAudio(audioBlob: Blob): Promise<void> {
+        this.queuedWebAudioPlayer.enqueueAudio(audioBlob);
+    }
+
+    
+    private async handleLoudnessDetected(audioBlob: Blob) {
+        this.queuedWebAudioPlayer.setVolume(0.5);
+        await this.queuedWebAudioPlayer.enqueueAudio(audioBlob);
+    }
+
+    private handleSilenceDetected(audioBlob: Blob) {
+        console.log('silence detected. setting volume back to normal');
+        this.queuedWebAudioPlayer.setVolume(this.config.audioPlayerVolume);
+        this.queuedWebAudioPlayer.enqueueAudio(audioBlob);
     }   
     
+    private handlePeriodicVolumeInformation(volume: number): void {
+        if(volume > this.config.loudnessThreshold){
+            //todo: pause audio for 1 second.  use setTimeout and clearInterval to reset if the volume is still above threshold
+        }
+    }
+
+    async startAudioLoudnessMeter() {
+        await this.audioLoudnessMeter.start({
+            onPeriodicVolumeInformation: (volume: number) => {
+                this.handlePeriodicVolumeInformation(volume);
+            },
+            onAudioAboveThresholdDetected: async (audioBlob: Blob) => {
+                this.handleLoudnessDetected(audioBlob);
+            },
+            onSilenceDetected: async (audioBlob: Blob) => {
+              this.handleSilenceDetected(audioBlob);
+            },
+        });
+    }
+
+    stopAudioLoudnessMeter(): void {
+        this.audioLoudnessMeter.stop();
+    }   
     
 }
