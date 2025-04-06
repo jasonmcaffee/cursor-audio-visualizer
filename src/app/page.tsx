@@ -5,14 +5,11 @@ import { useState, useEffect } from 'react';
 import styles from './page.module.css';
 import LoudnessMeter from './components/LoudnessMeter';
 import CallbackCounters from './components/CallbackCounters';
-import AudioLoudnessMeter from './services/AudioLoudnessMeter';
-import QueuedWebAudioPlayer from './services/QueuedWebAudioPlayer';
 import WebAudioPlayer from './services/WebAudioPlayer';
+import VoiceCommandSensitiveAudioPlayer from './services/VoiceCommandSensitiveAudioPlayer';
 
 const webAudioPlayer = new WebAudioPlayer();
-const queuedWebAudioPlayer = new QueuedWebAudioPlayer();
-const audioLoudnessMeter = new AudioLoudnessMeter();
-queuedWebAudioPlayer.play();
+const voiceCommandSensitiveAudioPlayer = new VoiceCommandSensitiveAudioPlayer();
 
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
@@ -21,16 +18,7 @@ export default function Home() {
   const [audioAboveThresholdCount, setAudioAboveThresholdCount] = useState(0);
   const [silenceDetectedCount, setSilenceDetectedCount] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const baselineVolume = 1.0; // Maximum volume
 
-
-  // Update volume when currentVolume changes and we're playing
-  useEffect(() => {
-    if (isPlaying && webAudioPlayer) {
-      // const newVolume = Math.max(0, baselineVolume - currentVolume);
-      // audioPlayer.setVolume(newVolume);
-    }
-  }, [currentVolume, isPlaying]);
 
   const handlePlayClick = async () => {
     if (!webAudioPlayer) return;
@@ -38,7 +26,6 @@ export default function Home() {
       webAudioPlayer.stop();
     } else {
       try {
-        webAudioPlayer.setVolume(baselineVolume);
         await webAudioPlayer.playAudioFile('sounds/Alan Watts - Buddhism Religion of No Religion  1.mp3');
        
       } catch (error) {
@@ -50,38 +37,24 @@ export default function Home() {
 
   const handleRecordClick = async () => {
     if (isRecording) {
-      audioLoudnessMeter?.stop();
+      voiceCommandSensitiveAudioPlayer.stopListening();
       setIsRecording(false);
       return;
     }
 
-
-    try {
-      await audioLoudnessMeter.start({
-        onPeriodicVolumeInformation: (volume: number) => {
-          setCurrentVolume(volume);
-          setVolumeInfoCount(prev => prev + 1);
-        },
-        onAudioAboveThresholdDetected: async (audioBlob: Blob) => {
-          setAudioAboveThresholdCount(prev => prev + 1);
-          try {
-            console.log('audio above threshold detected');
-            await queuedWebAudioPlayer.enqueueAudio(audioBlob);
-            
-          } catch (error) {
-            console.error('Error playing audio:', error);
-          }
-        },
-        onSilenceDetected: async (audioBlob: Blob) => {
-          console.log('silence detected');
-          await queuedWebAudioPlayer.enqueueAudio(audioBlob);
-          setSilenceDetectedCount(prev => prev + 1);
-        },
-      });
-      setIsRecording(true);
-    } catch (error) {
-      console.error('Error starting audio meter:', error);
-    }
+    await voiceCommandSensitiveAudioPlayer.startListening({
+      onPeriodicVolumeInformation: (volume: number) => {
+        setCurrentVolume(volume);
+        setVolumeInfoCount(prev => prev + 1);
+      },
+      onAudioAboveThresholdDetected: async (audioBlob: Blob) => {
+        setAudioAboveThresholdCount(prev => prev + 1);
+      },
+      onSilenceDetected: async (audioBlob: Blob) => {
+        setSilenceDetectedCount(prev => prev + 1);
+      },
+    });
+    setIsRecording(true);
   };
 
   return (

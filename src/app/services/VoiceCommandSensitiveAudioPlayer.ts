@@ -27,15 +27,16 @@ export default class VoiceCommandSensitiveAudioPlayer {
         if (config) {
             this.config = { ...this.config, ...config };
         }
+        this.queuedWebAudioPlayer.play();
     }
 
     async enqueueAudio(audioBlob: Blob): Promise<void> {
         this.queuedWebAudioPlayer.enqueueAudio(audioBlob);
     }
 
-    
     private async handleLoudnessDetected(audioBlob: Blob) {
-        this.queuedWebAudioPlayer.setVolume(0.5);
+        console.log('loudness detected. playing audio');
+        // this.queuedWebAudioPlayer.setVolume(0.5);
         await this.queuedWebAudioPlayer.enqueueAudio(audioBlob);
     }
 
@@ -51,21 +52,26 @@ export default class VoiceCommandSensitiveAudioPlayer {
         }
     }
 
-    async startAudioLoudnessMeter() {
+    async startListening({onPeriodicVolumeInformation, onAudioAboveThresholdDetected, onSilenceDetected}: {
+        onPeriodicVolumeInformation: (volume: number) => void, onAudioAboveThresholdDetected: (audioBlob: Blob) => void, onSilenceDetected: (audioBlob: Blob) => void
+    }) {
         await this.audioLoudnessMeter.start({
             onPeriodicVolumeInformation: (volume: number) => {
                 this.handlePeriodicVolumeInformation(volume);
+                onPeriodicVolumeInformation(volume);
             },
             onAudioAboveThresholdDetected: async (audioBlob: Blob) => {
                 this.handleLoudnessDetected(audioBlob);
+                onAudioAboveThresholdDetected(audioBlob);   
             },
             onSilenceDetected: async (audioBlob: Blob) => {
               this.handleSilenceDetected(audioBlob);
+              onSilenceDetected(audioBlob);
             },
         });
     }
 
-    stopAudioLoudnessMeter(): void {
+    stopListening(): void {
         this.audioLoudnessMeter.stop();
     }   
     
