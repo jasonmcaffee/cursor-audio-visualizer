@@ -25,12 +25,7 @@ export default function Home() {
     if (isPlaying) {
       webAudioPlayer.stop();
     } else {
-      try {
-        await webAudioPlayer.playAudioFile('sounds/Alan Watts - Buddhism Religion of No Religion  1.mp3');
-       
-      } catch (error) {
-        console.error('Error playing audio file:', error);
-      }
+      await webAudioPlayer.playAudioFile('sounds/Alan Watts - Buddhism Religion of No Religion  1.mp3');
     }
     setIsPlaying(!isPlaying);
   };
