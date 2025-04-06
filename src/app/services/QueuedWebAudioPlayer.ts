@@ -11,6 +11,11 @@ export default class QueuedWebAudioPlayer {
     private speed: number = 1.0;
     private hasMoreAudioChunks: boolean = true;
     private enqueueProcessingPromise: Promise<void> = Promise.resolve();
+    // Track playback position for pause/resume
+    private playbackPosition: number = 0;
+    private lastPauseTime: number = 0;
+    private totalElapsedTime: number = 0;
+    private currentBuffer: AudioBuffer | null = null;
 
     constructor() {
         this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -58,7 +63,6 @@ export default class QueuedWebAudioPlayer {
     }
 
     private playNext() {
-        console.log(`playNext`);
         if(!this.hasMoreAudioChunks && this.sourceQueue.length === 0){
             this.stop();
             return;
@@ -77,20 +81,45 @@ export default class QueuedWebAudioPlayer {
         }
 
         this.isAudioBufferPlaying = true;
+        this.currentBuffer = source.buffer;
+        this.lastPauseTime = this.audioContext!.currentTime;
+        
         source.onended = () => {
             this.isAudioBufferPlaying = false;
+            this.playbackPosition = 0;
+            this.totalElapsedTime = 0;
             if(this.isPlaying){
                 console.log(`source ended. playing next`);
                 // Automatically play the next source if available
                 this.playNext();
             }
         };
-        source.start();
+        source.start(0, this.playbackPosition);
+    }
+
+    pause() {
+        if (!this.isAudioBufferPlaying || !this.currentSource || !this.audioContext) {
+            return;
+        }
+
+        // Calculate the current playback position
+        const currentTime = this.audioContext.currentTime;
+        const elapsedSinceLastPause = currentTime - this.lastPauseTime;
+        this.totalElapsedTime += elapsedSinceLastPause;
+        this.playbackPosition = this.totalElapsedTime;
+        
+        // Stop the current source
+        this.currentSource.onended = null;
+        this.currentSource.stop();
+        this.currentSource.disconnect();
+        this.isAudioBufferPlaying = false;
     }
 
     play() {
-        this.stop();
-        console.log(`play`);
+        if (this.isAudioBufferPlaying) {
+            return;
+        }
+
         if(!this.audioContext){
             this.audioContext = new AudioContext();
             this.gainNode = this.audioContext.createGain();
@@ -101,8 +130,27 @@ export default class QueuedWebAudioPlayer {
         }
         this.hasMoreAudioChunks = true;
         this.isPlaying = true;
-        // If there's queued audio and nothing is playing, start playback
-        if (!this.isAudioBufferPlaying && this.sourceQueue.length > 0) {
+        
+        // If we have a current buffer and playback position, create a new source
+        if (this.currentBuffer && this.playbackPosition > 0) {
+            const source = this.audioContext.createBufferSource();
+            source.buffer = this.currentBuffer;
+            source.playbackRate.value = this.speed;
+            source.connect(this.gainNode!);
+            this.currentSource = source;
+            this.isAudioBufferPlaying = true;
+            this.lastPauseTime = this.audioContext.currentTime;
+            
+            source.onended = () => {
+                this.isAudioBufferPlaying = false;
+                this.playbackPosition = 0;
+                this.totalElapsedTime = 0;
+                if(this.isPlaying){
+                    this.playNext();
+                }
+            };
+            source.start(0, this.playbackPosition);
+        } else if (!this.isAudioBufferPlaying && this.sourceQueue.length > 0) {
             this.playNext();
         }
     }
@@ -143,8 +191,11 @@ export default class QueuedWebAudioPlayer {
         this.sourceQueue = [];
         this.isAudioBufferPlaying = false;
         this.isPlaying = false;
+        this.playbackPosition = 0;
+        this.totalElapsedTime = 0;
+        this.currentBuffer = null;
     }
-    
+
     dispose(): void {
         this.stop();
         if (this.audioContext) {
@@ -152,5 +203,4 @@ export default class QueuedWebAudioPlayer {
             this.audioContext = undefined;
         }
     }
-  
 }

@@ -18,14 +18,30 @@ export default function Home() {
   const [audioAboveThresholdCount, setAudioAboveThresholdCount] = useState(0);
   const [silenceDetectedCount, setSilenceDetectedCount] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-
+  const [alanWattsAudioBlob, setAlanWattsAudioBlob] = useState<Blob | null>(null);
+  const [hasAlreadyEnqueuedAlanWattsAudio, setHasAlreadyEnqueuedAlanWattsAudio] = useState(false);
+  async function fetchAudioBlob(){
+    console.log('fetching audio blob');
+    const response = await fetch('sounds/Alan Watts - Buddhism Religion of No Religion  1.mp3');
+    const audioBlob = await response.blob();
+    setAlanWattsAudioBlob(audioBlob);
+  }
+  useEffect(() => {
+    if(!alanWattsAudioBlob){
+      fetchAudioBlob();
+    }
+  }, []);
 
   const handlePlayClick = async () => {
-    if (!webAudioPlayer) return;
     if (isPlaying) {
-      webAudioPlayer.stop();
+      voiceCommandSensitiveAudioPlayer.pauseEnqueuedAudio();
     } else {
-      await webAudioPlayer.playAudioFile('sounds/Alan Watts - Buddhism Religion of No Religion  1.mp3');
+      if(!hasAlreadyEnqueuedAlanWattsAudio){
+        // await webAudioPlayer.playAudioFile('sounds/Alan Watts - Buddhism Religion of No Religion  1.mp3');
+        voiceCommandSensitiveAudioPlayer.enqueueAudio(alanWattsAudioBlob!);
+        setHasAlreadyEnqueuedAlanWattsAudio(true);
+      }
+      voiceCommandSensitiveAudioPlayer.playEnqueuedAudio();
     }
     setIsPlaying(!isPlaying);
   };

@@ -12,32 +12,11 @@ class WebAudioPlayer {
 
   async playAudioFile(filePath: string): Promise<void> {
     try {
-      // Stop any currently playing audio
       this.stop();
-
-      // Ensure the file path starts with a forward slash
-      const normalizedPath = filePath.startsWith('/') ? filePath : `/${filePath}`;
-      
       // Fetch the audio file
-      const response = await fetch(normalizedPath);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch audio file: ${response.status} ${response.statusText}`);
-      }
-      
+      const response = await fetch(filePath);
       const audioBlob = await response.blob();
-      if (audioBlob.size === 0) {
-        throw new Error('Audio file is empty');
-      }
-      
-      // Try to play the audio blob directly first
-      try {
-        await this.playAudioBlob(audioBlob);
-      } catch (error) {
-        console.error('Error playing audio file directly:', error);
-        // If direct playback fails, try converting the format
-        // const convertedBlob = await this.convertAudioFormat(audioBlob);
-        // await this.playAudioBlob(convertedBlob);
-      }
+      await this.playAudioBlob(audioBlob);
     } catch (error) {
       console.error('Error playing audio file:', error);
       throw error;

@@ -27,12 +27,20 @@ export default class VoiceCommandSensitiveAudioPlayer {
         if (config) {
             this.config = { ...this.config, ...config };
         }
+        this.playEnqueuedAudio();
+    }
+
+    async enqueueAudio(audioBlob: Blob) {
+        this.queuedWebAudioPlayer.enqueueAudio(audioBlob);
+    }
+
+    async playEnqueuedAudio(){
         this.queuedWebAudioPlayer.play();
     }
 
-    async enqueueAudio(audioBlob: Blob): Promise<void> {
-        this.queuedWebAudioPlayer.enqueueAudio(audioBlob);
-    }
+    async pauseEnqueuedAudio(){
+        this.queuedWebAudioPlayer.pause();
+    }   
 
     private async handleLoudnessDetected(audioBlob: Blob) {
         console.log('loudness detected. playing audio');
