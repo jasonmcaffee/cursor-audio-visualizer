@@ -123,41 +123,22 @@ class AudioLoudnessMeter {
     if (!this.isAnalyzing) {
       return;
     }
-
-    // Clear intervals and timeouts
-    if (this.volumeInterval !== null) {
-      clearInterval(this.volumeInterval);
-      this.volumeInterval = null;
-    }
-
-    if (this.silenceTimeout !== null) {
-      clearTimeout(this.silenceTimeout);
-      this.silenceTimeout = null;
-    }
-
+    clearInterval(this.volumeInterval);
+    this.volumeInterval = null;
+    clearTimeout(this.silenceTimeout);
+    this.silenceTimeout = null;
+    
     // Stop recording
     this.stopRecording();
 
-    // Clean up audio resources
-    if (this.source) {
-      this.source.disconnect();
-      this.source = null;
-    }
-
-    if (this.analyser) {
-      this.analyser.disconnect();
-      this.analyser = null;
-    }
-
-    if (this.mediaStream) {
-      this.mediaStream.getTracks().forEach(track => track.stop());
-      this.mediaStream = null;
-    }
-
-    if (this.audioContext) {
-      this.audioContext.close();
-      this.audioContext = null;
-    }
+    this.source?.disconnect();
+    this.source = null;
+    this.analyser?.disconnect();
+    this.analyser = null;
+    this.mediaStream?.getTracks().forEach(track => track.stop());
+    this.mediaStream = null;
+    this.audioContext?.close();
+    this.audioContext = null;
 
     // Reset state
     this.isAnalyzing = false;
@@ -175,26 +156,18 @@ class AudioLoudnessMeter {
     if (!this.audioContext || !this.mediaStream) {
       return;
     }
-
-    // Create audio source from media stream
     this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
-    
-    // Create analyzer
+
     this.analyser = this.audioContext.createAnalyser();
     this.analyser.fftSize = this.config.fftSize;
     this.analyser.smoothingTimeConstant = 0.3;
-    
-    // Connect source to analyzer
+
     this.source.connect(this.analyser);
-    
-    // Start periodic volume checking
+ 
     this.startVolumeChecking();
   }
 
   private startVolumeChecking(): void {
-    if (!this.analyser) {
-      return;
-    }
 
     const bufferLength = this.analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
@@ -214,8 +187,7 @@ class AudioLoudnessMeter {
       }
       const averageLoudness = sum / bufferLength;
       const normalizedLoudness = (averageLoudness / 255) * 100;
-      
-      // Call the periodic volume information callback
+   
       if (this.onPeriodicVolumeInformation) {
         this.onPeriodicVolumeInformation(normalizedLoudness);
       }
@@ -252,11 +224,8 @@ class AudioLoudnessMeter {
       return;
     }
 
-    // Reset silence detection timeout
-    if (this.silenceTimeout !== null) {
-      clearTimeout(this.silenceTimeout);
-      this.silenceTimeout = null;
-    }
+    clearTimeout(this.silenceTimeout);
+    this.silenceTimeout = null;
     
     // Set the audio start point (threshold time minus pre-trigger buffer)
     this.audioStartPoint = Date.now() - this.config.preTriggerBufferDuration;
@@ -271,11 +240,6 @@ class AudioLoudnessMeter {
   }
 
   private startContinuousRecording(): void {
-    if (!this.mediaStream) {
-      return;
-    }
-
-    // Create recorder
     this.mediaRecorder = new MediaRecorder(this.mediaStream, {
       mimeType: this.config.currentMimeType,
       audioBitsPerSecond: 128000,
@@ -288,13 +252,13 @@ class AudioLoudnessMeter {
     }
     this.isRecording = true;
     this.lastChunkTimestamp = Date.now();
-    
+    const numberOfChunksToCaptureAsHeaders = 2;
     this.mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
         // Store the first few chunks as header chunks if we haven't captured them yet
-        if (!this.hasCapturedHeaders && this.headerChunks.length < 3) {
+        if (!this.hasCapturedHeaders && this.headerChunks.length < numberOfChunksToCaptureAsHeaders) {
           this.headerChunks.push(event.data);
-          if (this.headerChunks.length >= 3) {
+          if (this.headerChunks.length >= numberOfChunksToCaptureAsHeaders) {
             this.hasCapturedHeaders = true;
           }
         }
