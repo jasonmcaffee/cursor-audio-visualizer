@@ -1,5 +1,6 @@
 import QueuedWebAudioPlayer from "./QueuedWebAudioPlayer";
 import AudioLoudnessMeter from "./AudioLoudnessMeter";
+import WebAudioPlayer from "./WebAudioPlayer";
 /**
  * Listen for voice commands from the user by monitoring audio loudness via the AudioLoudnessMeter.
  * Plays audio using WebAudioPlayer. 
@@ -9,24 +10,40 @@ import AudioLoudnessMeter from "./AudioLoudnessMeter";
 export default class VoiceCommandSensitiveAudioPlayer {
     
     private config = {
-        loudnessThreshold: 5,
-        preTriggerBufferDuration: 20,
+        loudnessThreshold: 20,
+        preTriggerBufferDuration: 1,
         initialRecordingDuration: 1000,
-        volumeCheckInterval: 50,
+        volumeCheckInterval: 10,
         fftSize: 1024,
         currentMimeType: 'audio/webm;codecs=opus',
         audioPlayerVolume: 1.0,
-    
+        echoCancellation: false, //removes audio from speakers.
+        noiseSuppression: false, //Constant sounds like fans, keyboard clacking, air conditioning hum, etc.
+        autoGainControl: false, //If you're speaking quietly → it will boost your voice.
     };
+
+    private pauseDueToAudioLoundessThresholdExceededIntervalId: number | undefined;
+    private audioLoudnessMeter: AudioLoudnessMeter;
 
     constructor(
         private queuedWebAudioPlayer: QueuedWebAudioPlayer = new QueuedWebAudioPlayer(), 
-        private audioLoudnessMeter: AudioLoudnessMeter = new AudioLoudnessMeter(),
+        private webAudioPlayer: WebAudioPlayer = new WebAudioPlayer(),
         config?: Partial<typeof VoiceCommandSensitiveAudioPlayer.prototype.config>
     ) {
         if (config) {
             this.config = { ...this.config, ...config };
         }
+        this.audioLoudnessMeter = new AudioLoudnessMeter({
+            echoCancellation: this.config.echoCancellation, 
+            noiseSuppression: this.config.noiseSuppression, 
+            autoGainControl: this.config.autoGainControl,
+            loudnessThreshold: this.config.loudnessThreshold,
+            preTriggerBufferDuration: this.config.preTriggerBufferDuration,
+            initialRecordingDuration: this.config.initialRecordingDuration,
+            volumeCheckInterval: this.config.volumeCheckInterval,
+            fftSize: this.config.fftSize,
+            currentMimeType: this.config.currentMimeType,
+        });
         this.playEnqueuedAudio();
     }
 
@@ -45,18 +62,27 @@ export default class VoiceCommandSensitiveAudioPlayer {
     private async handleLoudnessDetected(audioBlob: Blob) {
         console.log('loudness detected. playing audio');
         // this.queuedWebAudioPlayer.setVolume(0.5);
-        await this.queuedWebAudioPlayer.enqueueAudio(audioBlob);
+        // await this.queuedWebAudioPlayer.enqueueAudio(audioBlob);
+        this.webAudioPlayer.playAudioBlob(audioBlob);
     }
 
     private handleSilenceDetected(audioBlob: Blob) {
         console.log('silence detected. setting volume back to normal');
         this.queuedWebAudioPlayer.setVolume(this.config.audioPlayerVolume);
-        this.queuedWebAudioPlayer.enqueueAudio(audioBlob);
+        // this.queuedWebAudioPlayer.enqueueAudio(audioBlob);
+        this.webAudioPlayer.playAudioBlob(audioBlob);
     }   
     
     private handlePeriodicVolumeInformation(volume: number): void {
-        if(volume > this.config.loudnessThreshold){
+        if(volume > this.config.loudnessThreshold && this.queuedWebAudioPlayer.isPlaying){
+            console.log('volume above threshold. pausing audio');
+            this.queuedWebAudioPlayer.pause();
             //todo: pause audio for 1 second.  use setTimeout and clearInterval to reset if the volume is still above threshold
+            clearInterval(this.pauseDueToAudioLoundessThresholdExceededIntervalId);
+            //@ts-ignore
+            this.pauseDueToAudioLoundessThresholdExceededIntervalId = setTimeout(() => {
+                this.queuedWebAudioPlayer.play();
+            }, 5000);
         }
     }
 

@@ -50,14 +50,14 @@ class AudioLoudnessMeter {
 
   // Configuration options with defaults
   private config = {
-    loudnessThreshold: 5,           // Default loudness threshold (0-100)
+    loudnessThreshold: 10,           // Default loudness threshold (0-100)
     silenceDuration: 1000,          // Duration of silence before callback (ms)
     initialRecordingDuration: 1000, // Initial audio recording duration after trigger (ms)
     preTriggerBufferDuration: 20,  // Audio to keep before trigger (ms)
     volumeCheckInterval: 50,        // Interval for volume checking (ms)
     fftSize: 1024,                  // FFT size for analysis
     currentMimeType: 'audio/webm;codecs=opus',
-    echoCancellation: true,
+    echoCancellation: false,
     noiseSuppression: false,
     autoGainControl: false,
   };
