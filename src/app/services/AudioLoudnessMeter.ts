@@ -39,8 +39,8 @@ class AudioLoudnessMeter {
   private hasCapturedHeaders: boolean = false;
   
   // Timers and timestamps
-  private volumeInterval: number | null = null;
-  private silenceTimeout: number | null = null;
+  private volumeInterval = -1;
+  private silenceTimeout = -1;
   private lastLoudnessTime: number = 0;
   
   // Callbacks
@@ -125,9 +125,9 @@ class AudioLoudnessMeter {
       return;
     }
     clearInterval(this.volumeInterval);
-    this.volumeInterval = null;
+    this.volumeInterval = -1;
     clearTimeout(this.silenceTimeout);
-    this.silenceTimeout = null;
+    this.silenceTimeout = -1;
     
     // Stop recording
     this.stopRecording();
@@ -170,7 +170,7 @@ class AudioLoudnessMeter {
 
   private startVolumeChecking(): void {
 
-    const bufferLength = this.analyser.frequencyBinCount;
+    const bufferLength = this.analyser!.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
     let lastLoudnessOverThreshold = false;
     let silenceStartTime: number | null = null;
@@ -226,7 +226,7 @@ class AudioLoudnessMeter {
     }
 
     clearTimeout(this.silenceTimeout);
-    this.silenceTimeout = null;
+    this.silenceTimeout = -1;
     
     // Set the audio start point (threshold time minus pre-trigger buffer)
     this.audioStartPoint = Date.now() - this.config.preTriggerBufferDuration;
@@ -241,7 +241,7 @@ class AudioLoudnessMeter {
   }
 
   private startContinuousRecording(): void {
-    this.mediaRecorder = new MediaRecorder(this.mediaStream, {
+    this.mediaRecorder = new MediaRecorder(this.mediaStream!, {
       mimeType: this.config.currentMimeType,
       audioBitsPerSecond: 128000,
     });
