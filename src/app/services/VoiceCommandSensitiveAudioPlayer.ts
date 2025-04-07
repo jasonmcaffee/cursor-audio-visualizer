@@ -11,10 +11,10 @@ export default class VoiceCommandSensitiveAudioPlayer {
     
     private config = {
         loudnessThreshold: 10,
-        preTriggerBufferDuration: 20,
-        initialRecordingDuration: 1000,
-        volumeCheckInterval: 50,
-        fftSize: 1024,
+        // preTriggerBufferDuration: 20,
+        // initialRecordingDuration: 1000,
+        // volumeCheckInterval: 50,
+        // fftSize: 1024,
         currentMimeType: 'audio/webm;codecs=opus',
         audioPlayerVolume: 1.0,
         echoCancellation: true, //removes audio from speakers.
@@ -38,10 +38,10 @@ export default class VoiceCommandSensitiveAudioPlayer {
             noiseSuppression: this.config.noiseSuppression, 
             autoGainControl: this.config.autoGainControl,
             loudnessThreshold: this.config.loudnessThreshold,
-            preTriggerBufferDuration: this.config.preTriggerBufferDuration,
-            initialRecordingDuration: this.config.initialRecordingDuration,
-            volumeCheckInterval: this.config.volumeCheckInterval,
-            fftSize: this.config.fftSize,
+            // preTriggerBufferDuration: this.config.preTriggerBufferDuration,
+            // initialRecordingDuration: this.config.initialRecordingDuration,
+            // volumeCheckInterval: this.config.volumeCheckInterval,
+            // fftSize: this.config.fftSize,
             currentMimeType: this.config.currentMimeType,
         });
         this.playEnqueuedAudio();
