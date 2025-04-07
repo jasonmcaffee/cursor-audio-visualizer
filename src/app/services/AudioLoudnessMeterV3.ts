@@ -63,7 +63,7 @@ class AudioLoudnessMeterV3 {
     // Configuration options with defaults
     private config = {
       loudnessThreshold: 6,           // Default loudness threshold (0-100)
-      silenceDuration: 1000,          // Duration of silence before callback (ms)
+      amountOfSilenceMsBeforeOnSilenceIsTriggered: 1000,          // Duration of silence before callback (ms)
       initialRecordingDuration: 1000, // Initial audio recording duration after trigger (ms)
       msWorthOfAudioThatShouldBeIncludedBeforVolumeThresholdWasCrossed: 100,  // Audio to keep before trigger (ms)
       volumeCheckIntervalMs: 150,        // Interval for volume checking (ms)
@@ -116,11 +116,9 @@ class AudioLoudnessMeterV3 {
     private startVolumeChecking() {
       let loudnessDetectedStartTime: number | null = null; //gets reset after we process.
       let silenceDetectedStartTime: number | null = null; 
-
-      let processingAudioThresholdExceededEvent = false;
+      let processingAudioThresholdExceededEvent = false; // starts when one second of audio has been collected after the threshold was crossed.
 
       const collectAudioDataUntilInitialRecordingDuration = () => {
-        
         const msOfAudioDataCollected = Date.now() - loudnessDetectedStartTime!;
         if(msOfAudioDataCollected >= this.config.initialRecordingDuration) {
           loudnessDetectedStartTime = null;
@@ -141,7 +139,7 @@ class AudioLoudnessMeterV3 {
 
 
       this.volumeExceededThresholdIntervalId = window.setInterval(() => {
-        if(processingAudioThresholdExceededEvent) { return; }
+        if(processingAudioThresholdExceededEvent) { return; } //we don't want to send multiple events as threshold keeps getting crossed.
 
         if(loudnessDetectedStartTime != null) {   //already processing.
           collectAudioDataUntilInitialRecordingDuration();
@@ -151,6 +149,7 @@ class AudioLoudnessMeterV3 {
         if(isLoudnessOverThreshold) {
           console.log('isLoudnessOverThreshold');
           loudnessDetectedStartTime = Date.now();
+          //tell the blob collector which audio chunks to include.
           this.audioShouldStartAtThisDateTime = Date.now() - this.config.msWorthOfAudioThatShouldBeIncludedBeforVolumeThresholdWasCrossed;
         }
 
@@ -160,31 +159,28 @@ class AudioLoudnessMeterV3 {
       this.silenceVolumeIntervalId = window.setInterval(() => {
         if(!processingAudioThresholdExceededEvent) { return; }
 
+        //if the loudness crosses the threshold, reset the silence timer.
         if(isLoudnessOverThreshold) {
           silenceDetectedStartTime = null;
         }
 
+        //if the loudness does not cross the threshold, and the silence timer is not running, start it.
         if(!isLoudnessOverThreshold && silenceDetectedStartTime == null) {
           silenceDetectedStartTime = Date.now();
         }
 
+        //if the silence timer is running, and the duration has exceeded the silence duration, trigger the silence detected event.
         if(silenceDetectedStartTime != null) { 
           const silenceDuration = Date.now() - silenceDetectedStartTime!;
           console.log('silenceDuration', silenceDuration);
-          if(silenceDuration >= this.config.silenceDuration) {
+          if(silenceDuration >= this.config.amountOfSilenceMsBeforeOnSilenceIsTriggered) {
             this.triggerOnSilenceDetected();
             silenceDetectedStartTime = null;
             processingAudioThresholdExceededEvent = false;
           }
         }
-
-
       }, this.config.volumeCheckIntervalMs);
-
-
     }
-  
-
   
 
     private async startRecording() {
@@ -262,7 +258,6 @@ class AudioLoudnessMeterV3 {
     }
   
     
-
     public stop(): void {
         if (!this.isAnalyzing) { return; }
         clearInterval(this.volumeExceededThresholdIntervalId);
