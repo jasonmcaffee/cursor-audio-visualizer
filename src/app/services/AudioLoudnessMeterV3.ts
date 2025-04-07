@@ -47,8 +47,6 @@ class AudioLoudnessMeterV3 {
     // Audio storage
     private audioChunks: ExtendedBlob[] = [];
     private headerChunks: Blob[] = []; // Store initial chunks with headers
-    private lastChunkTimestamp: number = 0;
-    private hasCapturedHeaders: boolean = false;
     
     // Timers and timestamps
     private volumeInterval = -1;
@@ -73,6 +71,7 @@ class AudioLoudnessMeterV3 {
       noiseSuppression: false,
       autoGainControl: false,
       mediaStreamTimeSlice: 50,
+      numberOfChunksToCaptureAsHeaders: 2,
     };
   
     constructor(config?: Partial<typeof AudioLoudnessMeterV3.prototype.config>) {
@@ -186,36 +185,21 @@ class AudioLoudnessMeterV3 {
 
     private async startRecording() {
       this.mediaRecorder = new MediaRecorder(this.mediaStream!, {mimeType: this.config.currentMimeType,audioBitsPerSecond: 128000});
-      const recordingStartTimeMs = Date.now();
-      let lastAudioChunkEndTimeMs = 0;
 
       // Reset audio chunks but keep header chunks if we have them
       this.audioChunks = [];
-      if (!this.hasCapturedHeaders) {
-        this.headerChunks = [];
-      }
+      // this.headerChunks = [];
       this.isRecording = true;
-      this.lastChunkTimestamp = Date.now();
-      const numberOfChunksToCaptureAsHeaders = 2;
       this.mediaRecorder.ondataavailable = (event) => {
-        // const audioChunkEndTimeMs = Date.now() - recordingStartTimeMs;
         if (event.data.size > 0) {
           // Store the first few chunks as header chunks if we haven't captured them yet
-          if (!this.hasCapturedHeaders && this.headerChunks.length < numberOfChunksToCaptureAsHeaders) {
+          if (this.headerChunks.length < this.config.numberOfChunksToCaptureAsHeaders) {
             this.headerChunks.push(event.data);
-            if (this.headerChunks.length >= numberOfChunksToCaptureAsHeaders) {
-              this.hasCapturedHeaders = true;
-            }
           }
-
           const extendedBlob = event.data as ExtendedBlob;
           extendedBlob.dateTimeBlobEnded = Date.now();
 
-          //@ts-ignore
-          // event.data.audioChunkStartTimeMs = lastAudioChunkEndTimeMs;
           this.audioChunks.push(extendedBlob);
-          this.lastChunkTimestamp = Date.now();
-          // lastAudioChunkEndTimeMs = audioChunkEndTimeMs;
         }
       };
       
@@ -298,8 +282,6 @@ class AudioLoudnessMeterV3 {
         this.audioShouldStartAtThisDateTime = 0;
         this.audioChunks = [];
         this.headerChunks = [];
-        this.lastChunkTimestamp = 0;
-        this.hasCapturedHeaders = false;
         this.lastLoudnessTime = 0;
       }
   }
