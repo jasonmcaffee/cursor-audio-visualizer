@@ -5,6 +5,11 @@ export type AudioLoudnessMeterCallbacks = {
   onPeriodicVolumeInformation?: (volume: number) => void;
   onSilenceDetected?: (completeAudioBlob: Blob) => void;
 }
+
+type ExtendedBlob = Blob & {
+  dateTimeBlobEnded: number;
+};
+
 /**
  * AI should not remove these comments:
  * Functionality:
@@ -37,10 +42,10 @@ class AudioLoudnessMeterV3 {
     private isAnalyzing: boolean = false;
     private isRecording: boolean = false;
     private isInLoudnessEvent: boolean = false; // Track if we're between threshold crossing and silence
-    private audioStartPoint: number = 0; // Timestamp when threshold was crossed minus preTriggerBufferDuration
+    private audioShouldStartAtThisDateTime: number = 0; // Timestamp when threshold was crossed minus preTriggerBufferDuration
     
     // Audio storage
-    private audioChunks: Blob[] = [];
+    private audioChunks: ExtendedBlob[] = [];
     private headerChunks: Blob[] = []; // Store initial chunks with headers
     private lastChunkTimestamp: number = 0;
     private hasCapturedHeaders: boolean = false;
@@ -154,7 +159,7 @@ class AudioLoudnessMeterV3 {
       this.silenceTimeout = -1;
       
       // Set the audio start point (threshold time minus pre-trigger buffer)
-      this.audioStartPoint = Date.now() - this.config.preTriggerBufferDuration;
+      this.audioShouldStartAtThisDateTime = Date.now() - this.config.preTriggerBufferDuration;
       this.isInLoudnessEvent = true;
       
       // After initial recording duration, send the initial blob
@@ -189,11 +194,13 @@ class AudioLoudnessMeterV3 {
               this.hasCapturedHeaders = true;
             }
           }
-          //@ts-ignore
-          event.data.audioChunkEndTimeMs = Date.now();
+
+          const extendedBlob = event.data as ExtendedBlob;
+          extendedBlob.dateTimeBlobEnded = Date.now();
+
           //@ts-ignore
           // event.data.audioChunkStartTimeMs = lastAudioChunkEndTimeMs;
-          this.audioChunks.push(event.data);
+          this.audioChunks.push(extendedBlob);
           this.lastChunkTimestamp = Date.now();
           // lastAudioChunkEndTimeMs = audioChunkEndTimeMs;
         }
@@ -214,19 +221,11 @@ class AudioLoudnessMeterV3 {
       if (!this.isRecording || this.audioChunks.length === 0) {
         return;
       }
-  
-      // Find chunks that fall within our time window
-      // const relevantChunks = this.audioChunks.filter((_, index) => {
-      //   const chunkTime = this.lastChunkTimestamp - (this.audioChunks.length - index - 1) * this.config.mediaStreamTimeSlice;
-      //   return chunkTime >= this.audioStartPoint && 
-      //          chunkTime <= this.audioStartPoint + this.config.initialRecordingDuration;
-      // });
 
       const relevantChunks = this.audioChunks.filter((chunk, index) => {
-        //@ts-ignore
-        const chunkTime = chunk.audioChunkEndTimeMs;
-        return chunkTime >= this.audioStartPoint && 
-               chunkTime <= this.audioStartPoint + this.config.initialRecordingDuration;
+        const chunkTime = chunk.dateTimeBlobEnded;
+        return chunkTime >= this.audioShouldStartAtThisDateTime && 
+               chunkTime <= this.audioShouldStartAtThisDateTime + this.config.initialRecordingDuration;
       });
   
       if (relevantChunks.length > 0) {
@@ -245,9 +244,8 @@ class AudioLoudnessMeterV3 {
   
       // Find chunks from audioStartPoint until now
       const relevantChunks = this.audioChunks.filter((chunk, index) => {
-        //@ts-ignore
-        const chunkTime = chunk.audioChunkEndTimeMs;
-        return chunkTime >= this.audioStartPoint;
+        const chunkTime = chunk.dateTimeBlobEnded;
+        return chunkTime >= this.audioShouldStartAtThisDateTime;
       });
   
       if (relevantChunks.length > 0) {
@@ -298,7 +296,7 @@ class AudioLoudnessMeterV3 {
         this.isAnalyzing = false;
         this.isRecording = false;
         this.isInLoudnessEvent = false;
-        this.audioStartPoint = 0;
+        this.audioShouldStartAtThisDateTime = 0;
         this.audioChunks = [];
         this.headerChunks = [];
         this.lastChunkTimestamp = 0;
