@@ -125,7 +125,7 @@ class AudioLoudnessMeterV3 {
         // Handle loudness detection
         const isLoudnessOverThreshold = normalizedLoudness >= this.config.loudnessThreshold;
         if (isLoudnessOverThreshold && !didLastVolumeCheckExceedThreshold) {
-          this.sendLoudnessExceededBlobAfterInitialRecordingDuration();
+          this.triggerLoudnessExceedAfterTimeoutTranspires();
           silenceStartTime = null; // Reset silence timer when loudness is detected
         } 
         
@@ -146,7 +146,7 @@ class AudioLoudnessMeterV3 {
       }, this.config.volumeCheckInterval);
     }
   
-    private sendLoudnessExceededBlobAfterInitialRecordingDuration(): void {
+    private triggerLoudnessExceedAfterTimeoutTranspires(): void {
       // Only handle loudness detection if we're not already in a loudness event
       if (this.isInLoudnessEvent) {
         return;
@@ -162,13 +162,29 @@ class AudioLoudnessMeterV3 {
       // After initial recording duration, send the initial blob
       setTimeout(() => {
         if (this.isRecording) {
-          this.sendInitialBlob();
+          this.triggerOnAudioAboveThresholdDetected();
         }
       }, this.config.initialRecordingDuration);
     }
+
+    public sendSilenceDetectedAfterSilenceDuration(): void {
+      if (this.silenceTimeout !== null) {
+        clearTimeout(this.silenceTimeout);
+      }
   
+      this.silenceTimeout = window.setTimeout(() => {
+        if (this.isRecording) {
+          this.triggerOnSilenceDetected();
+          this.stopRecording();
+          this.isInLoudnessEvent = false; // Reset the flag after silence is detected
+          // Restart recording after silence is detected
+          this.startRecording();
+        }
+      }, this.config.silenceDuration);
+    }
+  
+
     private async startRecording() {
-     
       this.mediaRecorder = new MediaRecorder(this.mediaStream!, {mimeType: this.config.currentMimeType,audioBitsPerSecond: 128000});
       const recordingStartTimeMs = Date.now();
       let lastAudioChunkEndTimeMs = 0;
@@ -214,7 +230,7 @@ class AudioLoudnessMeterV3 {
       this.isRecording = false;
     }
   
-    private sendInitialBlob(): void {
+    private triggerOnAudioAboveThresholdDetected() {
       if (!this.isRecording || this.audioChunks.length === 0) {
         return;
       }
@@ -234,7 +250,7 @@ class AudioLoudnessMeterV3 {
       }
     }
   
-    private sendCompleteBlob(): void {
+    private triggerOnSilenceDetected() {
       if (!this.isRecording || this.audioChunks.length === 0) {
         return;
       }
@@ -254,21 +270,7 @@ class AudioLoudnessMeterV3 {
       }
     }
   
-    public sendSilenceDetectedAfterSilenceDuration(): void {
-      if (this.silenceTimeout !== null) {
-        clearTimeout(this.silenceTimeout);
-      }
-  
-      this.silenceTimeout = window.setTimeout(() => {
-        if (this.isRecording) {
-          this.sendCompleteBlob();
-          this.stopRecording();
-          this.isInLoudnessEvent = false; // Reset the flag after silence is detected
-          // Restart recording after silence is detected
-          this.startRecording();
-        }
-      }, this.config.silenceDuration);
-    }
+    
 
     public stop(): void {
         if (!this.isAnalyzing) { return; }
