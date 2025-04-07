@@ -63,16 +63,16 @@ class AudioLoudnessMeterV3 {
     // Configuration options with defaults
     private config = {
       loudnessThreshold: 6,           // Default loudness threshold (0-100)
-      amountOfSilenceMsBeforeOnSilenceIsTriggered: 1000,          // Duration of silence before callback (ms)
+      amountOfSilenceMsBeforeOnSilenceIsTriggered: 2000,          // Duration of silence before callback (ms)
       initialRecordingDuration: 1000, // Initial audio recording duration after trigger (ms)
       msWorthOfAudioThatShouldBeIncludedBeforVolumeThresholdWasCrossed: 100,  // Audio to keep before trigger (ms)
       volumeCheckIntervalMs: 10,        // Interval for volume checking (ms)
-      fftSize: 1024,                  // FFT size for analysis fftSize controls how detailed the frequency analysis is. Higher fftSize → better frequency resolution, but also more data and more CPU.
+      fftSize: 2048,                  // FFT size for analysis fftSize controls how detailed the frequency analysis is. Higher fftSize → better frequency resolution, but also more data and more CPU.
       currentMimeType: 'audio/webm;codecs=opus',
       echoCancellation: false,
       noiseSuppression: false,
       autoGainControl: false,
-      mediaStreamTimeSlice: 50,
+      mediaStreamTimeSlice: 10,
       numberOfChunksToCaptureAsHeaders: 2,
     };
   
@@ -133,8 +133,9 @@ class AudioLoudnessMeterV3 {
       this.periodicVolumeCalcIntervalId = window.setInterval(() => {
         normalizedLoudness = calculateLoudness(this.analyser!);
         this.onPeriodicVolumeInformation?.(normalizedLoudness);
+        // console.log('normalizedLoudness', normalizedLoudness);
         isLoudnessOverThreshold = normalizedLoudness >= this.config.loudnessThreshold;
-      }, this.config.volumeCheckIntervalMs);
+      }, 5);
 
 
       this.volumeExceededThresholdIntervalId = window.setInterval(() => {
