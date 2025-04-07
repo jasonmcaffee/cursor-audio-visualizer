@@ -1,5 +1,5 @@
 import QueuedWebAudioPlayer from "./QueuedWebAudioPlayer";
-import AudioLoudnessMeter from "./AudioLoudnessMeterV2";
+import AudioLoudnessMeterV3 from "./AudioLoudnessMeterV3";
 import WebAudioPlayer from "./WebAudioPlayer";
 /**
  * Listen for voice commands from the user by monitoring audio loudness via the AudioLoudnessMeter.
@@ -23,7 +23,7 @@ export default class VoiceCommandSensitiveAudioPlayer {
     };
 
     private pauseDueToAudioLoundessThresholdExceededIntervalId: number | undefined;
-    private audioLoudnessMeter: AudioLoudnessMeter;
+    private audioLoudnessMeter: AudioLoudnessMeterV3;
 
     constructor(
         private queuedWebAudioPlayer: QueuedWebAudioPlayer = new QueuedWebAudioPlayer(), 
@@ -33,7 +33,7 @@ export default class VoiceCommandSensitiveAudioPlayer {
         if (config) {
             this.config = { ...this.config, ...config };
         }
-        this.audioLoudnessMeter = new AudioLoudnessMeter({
+        this.audioLoudnessMeter = new AudioLoudnessMeterV3({
             echoCancellation: this.config.echoCancellation, 
             noiseSuppression: this.config.noiseSuppression, 
             autoGainControl: this.config.autoGainControl,
