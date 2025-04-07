@@ -65,7 +65,7 @@ class AudioLoudnessMeterV3 {
       loudnessThreshold: 10,           // Default loudness threshold (0-100)
       silenceDuration: 1000,          // Duration of silence before callback (ms)
       initialRecordingDuration: 1000, // Initial audio recording duration after trigger (ms)
-      preTriggerBufferDuration: 20,  // Audio to keep before trigger (ms)
+      msWorthOfAudioThatShouldBeIncludedBeforVolumeThresholdWasCrossed: 20,  // Audio to keep before trigger (ms)
       volumeCheckInterval: 50,        // Interval for volume checking (ms)
       fftSize: 1024,                  // FFT size for analysis fftSize controls how detailed the frequency analysis is. Higher fftSize → better frequency resolution, but also more data and more CPU.
       currentMimeType: 'audio/webm;codecs=opus',
@@ -114,7 +114,7 @@ class AudioLoudnessMeterV3 {
   
     private startVolumeChecking(): void {
     
-      let wasLoudnessOverThreshold = false;
+      let didLastVolumeCheckExceedThreshold = false;
       let silenceStartTime: number | null = null;
   
       this.volumeInterval = window.setInterval(() => {
@@ -122,18 +122,15 @@ class AudioLoudnessMeterV3 {
      
         this.onPeriodicVolumeInformation?.(normalizedLoudness);
         
-        
-        // Check if loudness crosses threshold
-        const isLoudnessOverThreshold = normalizedLoudness >= this.config.loudnessThreshold;
-        
         // Handle loudness detection
-        if (isLoudnessOverThreshold && !wasLoudnessOverThreshold) {
-          this.sendInitialBlobAfterInitialRecordingDuration();
+        const isLoudnessOverThreshold = normalizedLoudness >= this.config.loudnessThreshold;
+        if (isLoudnessOverThreshold && !didLastVolumeCheckExceedThreshold) {
+          this.sendLoudnessExceededBlobAfterInitialRecordingDuration();
           silenceStartTime = null; // Reset silence timer when loudness is detected
         } 
         
         // Handle silence detection
-        if (!isLoudnessOverThreshold && wasLoudnessOverThreshold) {
+        if (!isLoudnessOverThreshold && didLastVolumeCheckExceedThreshold) {
           // Start timing silence when loudness drops below threshold
           silenceStartTime = Date.now();
         } else if (!isLoudnessOverThreshold && silenceStartTime !== null) {
@@ -145,11 +142,11 @@ class AudioLoudnessMeterV3 {
           }
         }
         
-        wasLoudnessOverThreshold = isLoudnessOverThreshold;
+        didLastVolumeCheckExceedThreshold = isLoudnessOverThreshold;
       }, this.config.volumeCheckInterval);
     }
   
-    private sendInitialBlobAfterInitialRecordingDuration(): void {
+    private sendLoudnessExceededBlobAfterInitialRecordingDuration(): void {
       // Only handle loudness detection if we're not already in a loudness event
       if (this.isInLoudnessEvent) {
         return;
@@ -159,7 +156,7 @@ class AudioLoudnessMeterV3 {
       this.silenceTimeout = -1;
       
       // Set the audio start point (threshold time minus pre-trigger buffer)
-      this.audioShouldStartAtThisDateTime = Date.now() - this.config.preTriggerBufferDuration;
+      this.audioShouldStartAtThisDateTime = Date.now() - this.config.msWorthOfAudioThatShouldBeIncludedBeforVolumeThresholdWasCrossed;
       this.isInLoudnessEvent = true;
       
       // After initial recording duration, send the initial blob
