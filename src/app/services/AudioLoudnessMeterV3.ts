@@ -49,9 +49,9 @@ class AudioLoudnessMeterV3 {
     private headerChunks: Blob[] = []; // Store initial chunks with headers
     
     // Timers and timestamps
-    private volumeInterval = -1;
-    private volumeInterval2 = -1;
-    private volumeInterval3 = -1;
+    private volumeExceededThresholdIntervalId = -1;
+    private silenceVolumeIntervalId = -1;
+    private periodicVolumeCalcIntervalId = -1;
     private silenceTimeout = -1;
     private lastLoudnessTime: number = 0;
     
@@ -117,41 +117,31 @@ class AudioLoudnessMeterV3 {
       let loudnessDetectedStartTime: number | null = null; //gets reset after we process.
       let silenceDetectedStartTime: number | null = null; 
 
-      let audioAboveTresholdProcessingCooldown = false;
+      let processingAudioThresholdExceededEvent = false;
 
       const collectAudioDataUntilInitialRecordingDuration = () => {
         
         const msOfAudioDataCollected = Date.now() - loudnessDetectedStartTime!;
         if(msOfAudioDataCollected >= this.config.initialRecordingDuration) {
           loudnessDetectedStartTime = null;
-          audioAboveTresholdProcessingCooldown = true;
+          processingAudioThresholdExceededEvent = true; //don't let any more of these process until silence is detected.
           this.triggerOnAudioAboveThresholdDetected();
-          setTimeout(() => {
-            audioAboveTresholdProcessingCooldown = false;
-          }, 1000); 
         }
       }
 
-      const collectAudioDataUntilSilenceDuration = (s: number) => {
-        const msOfAudioDataCollected = Date.now() - s;
-        if(msOfAudioDataCollected >= this.config.silenceDuration) {
-          silenceDetectedStartTime = null;
-          this.triggerOnSilenceDetected();
-        }
-      }
 
       let normalizedLoudness = 0;
       let isLoudnessOverThreshold = false;
 
-      this.volumeInterval3 = window.setInterval(() => {
+      this.periodicVolumeCalcIntervalId = window.setInterval(() => {
         normalizedLoudness = calculateLoudness(this.analyser!);
         this.onPeriodicVolumeInformation?.(normalizedLoudness);
         isLoudnessOverThreshold = normalizedLoudness >= this.config.loudnessThreshold;
       }, this.config.volumeCheckIntervalMs);
 
 
-      this.volumeInterval = window.setInterval(() => {
-        if(audioAboveTresholdProcessingCooldown) { return; }
+      this.volumeExceededThresholdIntervalId = window.setInterval(() => {
+        if(processingAudioThresholdExceededEvent) { return; }
 
         if(loudnessDetectedStartTime != null) {   //already processing.
           collectAudioDataUntilInitialRecordingDuration();
@@ -167,64 +157,34 @@ class AudioLoudnessMeterV3 {
       }, this.config.volumeCheckIntervalMs);
 
 
-      // this.volumeInterval2 = window.setInterval(() => {
-        
-      //   if(silenceDetectedStartTime != null && loudnessDetectedStartTime != null) {   //already processing.
-      //     collectAudioDataUntilSilenceDuration(silenceDetectedStartTime);
-      //     return; 
-      //   }
+      this.silenceVolumeIntervalId = window.setInterval(() => {
+        if(!processingAudioThresholdExceededEvent) { return; }
 
-      //   const normalizedLoudness = calculateLoudness(this.analyser!);
-      //   // this.onPeriodicVolumeInformation?.(normalizedLoudness);
-        
-      //   // Handle loudness detection
-      //   const isLoudnessOverThreshold = normalizedLoudness >= this.config.loudnessThreshold;
-
-      //   if(!isLoudnessOverThreshold) {
-      //     silenceDetectedStartTime = Date.now();
-      //   }
-
-      // }, this.config.volumeCheckInterval);
-
-
-    }
-  
-    private triggerLoudnessExceedAfterTimeoutTranspires(): void {
-      // Only handle loudness detection if we're not already in a loudness event
-      if (this.isInLoudnessEvent) {
-        return;
-      }
-  
-      clearTimeout(this.silenceTimeout);
-      this.silenceTimeout = -1;
-      
-      // Set the audio start point (threshold time minus pre-trigger buffer)
-      this.audioShouldStartAtThisDateTime = Date.now() - this.config.msWorthOfAudioThatShouldBeIncludedBeforVolumeThresholdWasCrossed;
-      this.isInLoudnessEvent = true;
-      
-      // After initial recording duration, send the initial blob
-      setTimeout(() => {
-        if (this.isRecording) {
-          this.triggerOnAudioAboveThresholdDetected();
+        if(isLoudnessOverThreshold) {
+          silenceDetectedStartTime = null;
         }
-      }, this.config.initialRecordingDuration);
-    }
 
-    public sendSilenceDetectedAfterSilenceDuration(): void {
-      if (this.silenceTimeout !== null) {
-        clearTimeout(this.silenceTimeout);
-      }
-  
-      this.silenceTimeout = window.setTimeout(() => {
-        if (this.isRecording) {
-          this.triggerOnSilenceDetected();
-          this.stopRecording();
-          this.isInLoudnessEvent = false; // Reset the flag after silence is detected
-          // Restart recording after silence is detected
-          this.startRecording();
+        if(!isLoudnessOverThreshold && silenceDetectedStartTime == null) {
+          silenceDetectedStartTime = Date.now();
         }
-      }, this.config.silenceDuration);
+
+        if(silenceDetectedStartTime != null) { 
+          const silenceDuration = Date.now() - silenceDetectedStartTime!;
+          console.log('silenceDuration', silenceDuration);
+          if(silenceDuration >= this.config.silenceDuration) {
+            this.triggerOnSilenceDetected();
+            silenceDetectedStartTime = null;
+            processingAudioThresholdExceededEvent = false;
+          }
+        }
+
+
+      }, this.config.volumeCheckIntervalMs);
+
+
     }
+  
+
   
 
     private async startRecording() {
@@ -305,14 +265,14 @@ class AudioLoudnessMeterV3 {
 
     public stop(): void {
         if (!this.isAnalyzing) { return; }
-        clearInterval(this.volumeInterval);
-        this.volumeInterval = -1; 
-        clearInterval(this.volumeInterval2);
-        this.volumeInterval2 = -1;
+        clearInterval(this.volumeExceededThresholdIntervalId);
+        this.volumeExceededThresholdIntervalId = -1; 
+        clearInterval(this.silenceVolumeIntervalId);
+        this.silenceVolumeIntervalId = -1;
         clearTimeout(this.silenceTimeout);
         this.silenceTimeout = -1;
-        clearInterval(this.volumeInterval3);
-        this.volumeInterval3 = -1;
+        clearInterval(this.periodicVolumeCalcIntervalId);
+        this.periodicVolumeCalcIntervalId = -1;
         
         // Stop recording
         this.stopRecording();
@@ -338,37 +298,3 @@ class AudioLoudnessMeterV3 {
   }
   
   export default AudioLoudnessMeterV3;
-
-
-  // private startVolumeChecking(): void {
-    
-  //   let didLastVolumeCheckExceedThreshold = false;
-  //   let silenceStartTime: number | null = null;
-
-  //   this.volumeInterval = window.setInterval(() => {
-  //     const normalizedLoudness = calculateLoudness(this.analyser!);
-  //     this.onPeriodicVolumeInformation?.(normalizedLoudness);
-      
-  //     // Handle loudness detection
-  //     const isLoudnessOverThreshold = normalizedLoudness >= this.config.loudnessThreshold;
-  //     if (isLoudnessOverThreshold && !didLastVolumeCheckExceedThreshold) {
-  //       this.triggerLoudnessExceedAfterTimeoutTranspires();
-  //       silenceStartTime = null; // Reset silence timer when loudness is detected
-  //     } 
-      
-  //     // Handle silence detection
-  //     if (!isLoudnessOverThreshold && didLastVolumeCheckExceedThreshold) {
-  //       // Start timing silence when loudness drops below threshold
-  //       silenceStartTime = Date.now();
-  //     } else if (!isLoudnessOverThreshold && silenceStartTime !== null) {
-  //       // Check if we've been silent for long enough
-  //       const silenceDuration = Date.now() - silenceStartTime;
-  //       if (silenceDuration >= this.config.silenceDuration) {
-  //         this.sendSilenceDetectedAfterSilenceDuration();
-  //         silenceStartTime = null;
-  //       }
-  //     }
-      
-  //     didLastVolumeCheckExceedThreshold = isLoudnessOverThreshold;
-  //   }, this.config.volumeCheckInterval);
-  // }
