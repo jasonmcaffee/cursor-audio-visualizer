@@ -1,10 +1,5 @@
 'use client';
-import { Buffer } from 'buffer';
 
-// Polyfill Buffer for browser environments
-if (typeof window !== 'undefined') {
-  (window as any).Buffer = Buffer;
-}    
 import { FaMicrophone, FaPlay, FaPause } from 'react-icons/fa';
 import { useState, useEffect } from 'react';
 import styles from './page.module.css';
