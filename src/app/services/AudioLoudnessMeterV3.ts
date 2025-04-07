@@ -66,7 +66,7 @@ class AudioLoudnessMeterV3 {
       amountOfSilenceMsBeforeOnSilenceIsTriggered: 1000,          // Duration of silence before callback (ms)
       initialRecordingDuration: 1000, // Initial audio recording duration after trigger (ms)
       msWorthOfAudioThatShouldBeIncludedBeforVolumeThresholdWasCrossed: 100,  // Audio to keep before trigger (ms)
-      volumeCheckIntervalMs: 150,        // Interval for volume checking (ms)
+      volumeCheckIntervalMs: 10,        // Interval for volume checking (ms)
       fftSize: 1024,                  // FFT size for analysis fftSize controls how detailed the frequency analysis is. Higher fftSize → better frequency resolution, but also more data and more CPU.
       currentMimeType: 'audio/webm;codecs=opus',
       echoCancellation: false,
@@ -126,7 +126,6 @@ class AudioLoudnessMeterV3 {
           this.triggerOnAudioAboveThresholdDetected();
         }
       }
-
 
       let normalizedLoudness = 0;
       let isLoudnessOverThreshold = false;

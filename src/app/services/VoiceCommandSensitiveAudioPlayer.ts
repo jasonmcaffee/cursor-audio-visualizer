@@ -17,9 +17,9 @@ export default class VoiceCommandSensitiveAudioPlayer {
         // fftSize: 1024,
         currentMimeType: 'audio/webm;codecs=opus',
         audioPlayerVolume: 1.0,
-        echoCancellation: true, //removes audio from speakers.
-        noiseSuppression: true, //Constant sounds like fans, keyboard clacking, air conditioning hum, etc.
-        autoGainControl: true, //If you're speaking quietly → it will boost your voice.
+        echoCancellation: false, //removes audio from speakers.
+        noiseSuppression: false, //Constant sounds like fans, keyboard clacking, air conditioning hum, etc.
+        autoGainControl: false, //If you're speaking quietly → it will boost your voice.
     };
 
     private pauseDueToAudioLoundessThresholdExceededIntervalId: number | undefined;
@@ -60,10 +60,10 @@ export default class VoiceCommandSensitiveAudioPlayer {
     }   
 
     private async handleLoudnessDetected(audioBlob: Blob) {
-        console.log('loudness detected. playing audio', audioBlob);
+        // console.log('loudness detected. playing audio', audioBlob);
         // this.queuedWebAudioPlayer.setVolume(0.5);
         // await this.queuedWebAudioPlayer.enqueueAudio(audioBlob);
-        this.webAudioPlayer.playAudioBlob(audioBlob);
+        // this.webAudioPlayer.playAudioBlob(audioBlob);
     }
 
     private handleSilenceDetected(audioBlob: Blob) {
