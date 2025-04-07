@@ -50,6 +50,8 @@ class AudioLoudnessMeterV3 {
     
     // Timers and timestamps
     private volumeInterval = -1;
+    private volumeInterval2 = -1;
+    private volumeInterval3 = -1;
     private silenceTimeout = -1;
     private lastLoudnessTime: number = 0;
     
@@ -60,11 +62,11 @@ class AudioLoudnessMeterV3 {
   
     // Configuration options with defaults
     private config = {
-      loudnessThreshold: 10,           // Default loudness threshold (0-100)
+      loudnessThreshold: 6,           // Default loudness threshold (0-100)
       silenceDuration: 1000,          // Duration of silence before callback (ms)
       initialRecordingDuration: 1000, // Initial audio recording duration after trigger (ms)
-      msWorthOfAudioThatShouldBeIncludedBeforVolumeThresholdWasCrossed: 20,  // Audio to keep before trigger (ms)
-      volumeCheckInterval: 50,        // Interval for volume checking (ms)
+      msWorthOfAudioThatShouldBeIncludedBeforVolumeThresholdWasCrossed: 100,  // Audio to keep before trigger (ms)
+      volumeCheckIntervalMs: 150,        // Interval for volume checking (ms)
       fftSize: 1024,                  // FFT size for analysis fftSize controls how detailed the frequency analysis is. Higher fftSize → better frequency resolution, but also more data and more CPU.
       currentMimeType: 'audio/webm;codecs=opus',
       echoCancellation: false,
@@ -111,38 +113,80 @@ class AudioLoudnessMeterV3 {
       this.startVolumeChecking();
     }
   
-    private startVolumeChecking(): void {
-    
-      let didLastVolumeCheckExceedThreshold = false;
-      let silenceStartTime: number | null = null;
-  
-      this.volumeInterval = window.setInterval(() => {
-        const normalizedLoudness = calculateLoudness(this.analyser!);
-     
-        this.onPeriodicVolumeInformation?.(normalizedLoudness);
+    private startVolumeChecking() {
+      let loudnessDetectedStartTime: number | null = null; //gets reset after we process.
+      let silenceDetectedStartTime: number | null = null; 
+
+      let audioAboveTresholdProcessingCooldown = false;
+
+      const collectAudioDataUntilInitialRecordingDuration = () => {
         
-        // Handle loudness detection
-        const isLoudnessOverThreshold = normalizedLoudness >= this.config.loudnessThreshold;
-        if (isLoudnessOverThreshold && !didLastVolumeCheckExceedThreshold) {
-          this.triggerLoudnessExceedAfterTimeoutTranspires();
-          silenceStartTime = null; // Reset silence timer when loudness is detected
-        } 
-        
-        // Handle silence detection
-        if (!isLoudnessOverThreshold && didLastVolumeCheckExceedThreshold) {
-          // Start timing silence when loudness drops below threshold
-          silenceStartTime = Date.now();
-        } else if (!isLoudnessOverThreshold && silenceStartTime !== null) {
-          // Check if we've been silent for long enough
-          const silenceDuration = Date.now() - silenceStartTime;
-          if (silenceDuration >= this.config.silenceDuration) {
-            this.sendSilenceDetectedAfterSilenceDuration();
-            silenceStartTime = null;
-          }
+        const msOfAudioDataCollected = Date.now() - loudnessDetectedStartTime!;
+        if(msOfAudioDataCollected >= this.config.initialRecordingDuration) {
+          loudnessDetectedStartTime = null;
+          audioAboveTresholdProcessingCooldown = true;
+          this.triggerOnAudioAboveThresholdDetected();
+          setTimeout(() => {
+            audioAboveTresholdProcessingCooldown = false;
+          }, 1000); 
         }
+      }
+
+      const collectAudioDataUntilSilenceDuration = (s: number) => {
+        const msOfAudioDataCollected = Date.now() - s;
+        if(msOfAudioDataCollected >= this.config.silenceDuration) {
+          silenceDetectedStartTime = null;
+          this.triggerOnSilenceDetected();
+        }
+      }
+
+      let normalizedLoudness = 0;
+      let isLoudnessOverThreshold = false;
+
+      this.volumeInterval3 = window.setInterval(() => {
+        normalizedLoudness = calculateLoudness(this.analyser!);
+        this.onPeriodicVolumeInformation?.(normalizedLoudness);
+        isLoudnessOverThreshold = normalizedLoudness >= this.config.loudnessThreshold;
+      }, this.config.volumeCheckIntervalMs);
+
+
+      this.volumeInterval = window.setInterval(() => {
+        if(audioAboveTresholdProcessingCooldown) { return; }
+
+        if(loudnessDetectedStartTime != null) {   //already processing.
+          collectAudioDataUntilInitialRecordingDuration();
+          return; 
+        }
+
+        if(isLoudnessOverThreshold) {
+          console.log('isLoudnessOverThreshold');
+          loudnessDetectedStartTime = Date.now();
+          this.audioShouldStartAtThisDateTime = Date.now() - this.config.msWorthOfAudioThatShouldBeIncludedBeforVolumeThresholdWasCrossed;
+        }
+
+      }, this.config.volumeCheckIntervalMs);
+
+
+      // this.volumeInterval2 = window.setInterval(() => {
         
-        didLastVolumeCheckExceedThreshold = isLoudnessOverThreshold;
-      }, this.config.volumeCheckInterval);
+      //   if(silenceDetectedStartTime != null && loudnessDetectedStartTime != null) {   //already processing.
+      //     collectAudioDataUntilSilenceDuration(silenceDetectedStartTime);
+      //     return; 
+      //   }
+
+      //   const normalizedLoudness = calculateLoudness(this.analyser!);
+      //   // this.onPeriodicVolumeInformation?.(normalizedLoudness);
+        
+      //   // Handle loudness detection
+      //   const isLoudnessOverThreshold = normalizedLoudness >= this.config.loudnessThreshold;
+
+      //   if(!isLoudnessOverThreshold) {
+      //     silenceDetectedStartTime = Date.now();
+      //   }
+
+      // }, this.config.volumeCheckInterval);
+
+
     }
   
     private triggerLoudnessExceedAfterTimeoutTranspires(): void {
@@ -215,6 +259,7 @@ class AudioLoudnessMeterV3 {
     }
   
     private triggerOnAudioAboveThresholdDetected() {
+      const startTime = Date.now();
       if (!this.isRecording || this.audioChunks.length === 0) {
         return;
       }
@@ -232,6 +277,8 @@ class AudioLoudnessMeterV3 {
           this.onAudioAboveThresholdDetected(initialBlob);
         }
       }
+      const endTime = Date.now();
+      // console.log('triggerOnAudioAboveThresholdDetected took ', endTime - startTime, 'ms');  
     }
   
     private triggerOnSilenceDetected() {
@@ -259,9 +306,13 @@ class AudioLoudnessMeterV3 {
     public stop(): void {
         if (!this.isAnalyzing) { return; }
         clearInterval(this.volumeInterval);
-        this.volumeInterval = -1;
+        this.volumeInterval = -1; 
+        clearInterval(this.volumeInterval2);
+        this.volumeInterval2 = -1;
         clearTimeout(this.silenceTimeout);
         this.silenceTimeout = -1;
+        clearInterval(this.volumeInterval3);
+        this.volumeInterval3 = -1;
         
         // Stop recording
         this.stopRecording();
@@ -287,3 +338,37 @@ class AudioLoudnessMeterV3 {
   }
   
   export default AudioLoudnessMeterV3;
+
+
+  // private startVolumeChecking(): void {
+    
+  //   let didLastVolumeCheckExceedThreshold = false;
+  //   let silenceStartTime: number | null = null;
+
+  //   this.volumeInterval = window.setInterval(() => {
+  //     const normalizedLoudness = calculateLoudness(this.analyser!);
+  //     this.onPeriodicVolumeInformation?.(normalizedLoudness);
+      
+  //     // Handle loudness detection
+  //     const isLoudnessOverThreshold = normalizedLoudness >= this.config.loudnessThreshold;
+  //     if (isLoudnessOverThreshold && !didLastVolumeCheckExceedThreshold) {
+  //       this.triggerLoudnessExceedAfterTimeoutTranspires();
+  //       silenceStartTime = null; // Reset silence timer when loudness is detected
+  //     } 
+      
+  //     // Handle silence detection
+  //     if (!isLoudnessOverThreshold && didLastVolumeCheckExceedThreshold) {
+  //       // Start timing silence when loudness drops below threshold
+  //       silenceStartTime = Date.now();
+  //     } else if (!isLoudnessOverThreshold && silenceStartTime !== null) {
+  //       // Check if we've been silent for long enough
+  //       const silenceDuration = Date.now() - silenceStartTime;
+  //       if (silenceDuration >= this.config.silenceDuration) {
+  //         this.sendSilenceDetectedAfterSilenceDuration();
+  //         silenceStartTime = null;
+  //       }
+  //     }
+      
+  //     didLastVolumeCheckExceedThreshold = isLoudnessOverThreshold;
+  //   }, this.config.volumeCheckInterval);
+  // }
