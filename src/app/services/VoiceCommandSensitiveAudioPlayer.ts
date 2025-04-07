@@ -1,5 +1,5 @@
 import QueuedWebAudioPlayer from "./QueuedWebAudioPlayer";
-import AudioLoudnessMeter from "./AudioLoudnessMeter";
+import AudioLoudnessMeter from "./AudioLoudnessMeterV2";
 import WebAudioPlayer from "./WebAudioPlayer";
 /**
  * Listen for voice commands from the user by monitoring audio loudness via the AudioLoudnessMeter.
@@ -10,7 +10,7 @@ import WebAudioPlayer from "./WebAudioPlayer";
 export default class VoiceCommandSensitiveAudioPlayer {
     
     private config = {
-        loudnessThreshold: 10,
+        loudnessThreshold: 5,
         // preTriggerBufferDuration: 20,
         // initialRecordingDuration: 1000,
         // volumeCheckInterval: 50,
@@ -60,14 +60,14 @@ export default class VoiceCommandSensitiveAudioPlayer {
     }   
 
     private async handleLoudnessDetected(audioBlob: Blob) {
-        console.log('loudness detected. playing audio');
+        console.log('loudness detected. playing audio', audioBlob);
         // this.queuedWebAudioPlayer.setVolume(0.5);
         // await this.queuedWebAudioPlayer.enqueueAudio(audioBlob);
         this.webAudioPlayer.playAudioBlob(audioBlob);
     }
 
     private handleSilenceDetected(audioBlob: Blob) {
-        console.log('silence detected. setting volume back to normal');
+        console.log('silence detected. setting volume back to normal', audioBlob);
         this.queuedWebAudioPlayer.setVolume(this.config.audioPlayerVolume);
         // this.queuedWebAudioPlayer.enqueueAudio(audioBlob);
         this.webAudioPlayer.playAudioBlob(audioBlob);
@@ -75,7 +75,7 @@ export default class VoiceCommandSensitiveAudioPlayer {
     
     private handlePeriodicVolumeInformation(volume: number): void {
         if(volume > this.config.loudnessThreshold && this.queuedWebAudioPlayer.isPlaying){
-            console.log('volume above threshold. pausing audio');
+            // console.log('- periodic volume above threshold. pausing audio');
             this.queuedWebAudioPlayer.pause();
             //todo: pause audio for 1 second.  use setTimeout and clearInterval to reset if the volume is still above threshold
             clearInterval(this.pauseDueToAudioLoundessThresholdExceededIntervalId);

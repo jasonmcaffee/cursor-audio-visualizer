@@ -24,7 +24,7 @@ class WebAudioPlayer {
   }
 
   async playAudioBlob(audioBlob: Blob): Promise<void> {
-    console.log(`playing audio blob: `, audioBlob)
+    // console.log(`playing audio blob: `, audioBlob);
     try {
       this.stop();
       const arrayBuffer = await audioBlob.arrayBuffer();
