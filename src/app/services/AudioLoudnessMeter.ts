@@ -54,7 +54,7 @@ class AudioLoudnessMeter {
     silenceDuration: 1000,          // Duration of silence before callback (ms)
     initialRecordingDuration: 1000, // Initial audio recording duration after trigger (ms)
     preTriggerBufferDuration: 20,  // Audio to keep before trigger (ms)
-    volumeCheckInterval: 50,        // Interval for volume checking (ms)
+    volumeCheckInterval: 20,        // Interval for volume checking (ms)
     fftSize: 1024,                  // FFT size for analysis
     currentMimeType: 'audio/webm;codecs=opus',
     echoCancellation: false,
@@ -339,3 +339,4 @@ class AudioLoudnessMeter {
 }
 
 export default AudioLoudnessMeter;
+
