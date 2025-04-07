@@ -1,22 +1,49 @@
 /**
- * AudioLoudnessMeterV2 - Improved version of AudioLoudnessMeter
+ * AudioLoudnessMeterV2 - Monitors audio input for loudness threshold crossing and silence detection
  * 
- * Functionality:
- * - Monitors audio input for loudness threshold crossing
- * - Provides pre-trigger buffer audio when threshold is crossed
- * - Detects silence after loudness events
- * - Maintains a single MediaRecorder instance throughout lifecycle
- * - Provides periodic volume information
- * - Ensures audio blobs are properly formatted with headers
+ * Detailed Requirements:
+ * 
+ * 1. Loudness Detection:
+ *    - When audio volume crosses above the loudnessThreshold, trigger loudness detection
+ *    - The audio blob sent to onAudioAboveThresholdDetected must:
+ *      a. Start preTriggerBufferDuration before the threshold was crossed
+ *      b. Be EXACTLY initialRecordingDuration long (no more, no less)
+ *      c. Include all audio from the start point to the end point
+ *      d. If not enough audio is available yet, wait until we have exactly initialRecordingDuration of audio
+ *    Example: If "one two three" is spoken and "two" crosses the threshold:
+ *      - Start point = time when "one" started (preTriggerBufferDuration before threshold)
+ *      - End point = start point + initialRecordingDuration (exactly)
+ *      - Audio blob should contain exactly initialRecordingDuration of audio
+ * 
+ * 2. Silence Detection:
+ *    - After loudness is detected, monitor for silence
+ *    - Silence is defined as volume staying below threshold for silenceDuration
+ *    - When silence is detected, the audio blob sent to onSilenceDetected must:
+ *      a. Start at the same point as the loudness detection blob (preTriggerBufferDuration before threshold)
+ *      b. Include all audio up until silence was detected
+ *    Example: If "one two three" is spoken and then silence:
+ *      - Start point = time when "one" started (same as loudness detection)
+ *      - End point = time when silence was detected
+ *      - Audio blob should contain "one two three"
+ * 
+ * 3. Continuous Monitoring:
+ *    - Volume must be monitored continuously via onPeriodicVolumeInformation
+ *    - Only one loudness event can be active at a time
+ *    - New loudness events cannot start until silence is detected from the previous event
+ * 
+ * 4. Audio Quality:
+ *    - All audio blobs must include proper headers for the specified mimeType
+ *    - Audio must be playable by standard web audio players
+ *    - No audio should be lost or clipped between loudness and silence detection
  */
 
 interface AudioLoudnessMeterConfig {
-  loudnessThreshold: number;           // Default loudness threshold (0-100)
-  silenceDuration: number;            // Duration of silence before callback (ms)
-  initialRecordingDuration: number;   // Initial audio recording duration after trigger (ms)
-  preTriggerBufferDuration: number;   // Audio to keep before trigger (ms)
-  volumeCheckInterval: number;        // Interval for volume checking (ms)
-  fftSize: number;                    // FFT size for analysis
+  loudnessThreshold: number;           // Volume level (0-100) that triggers loudness detection
+  silenceDuration: number;            // Duration of silence (ms) before triggering silence detection
+  initialRecordingDuration: number;   // Length (ms) of audio blob sent on loudness detection
+  preTriggerBufferDuration: number;   // Audio (ms) to keep before loudness threshold crossing
+  volumeCheckInterval: number;        // How often (ms) to check volume level
+  fftSize: number;                    // FFT size for frequency analysis
   currentMimeType: string;            // MIME type for audio recording
   echoCancellation: boolean;          // Enable echo cancellation
   noiseSuppression: boolean;          // Enable noise suppression
@@ -41,14 +68,15 @@ class AudioLoudnessMeterV2 {
   private isAnalyzing: boolean = false;
   private isRecording: boolean = false;
   private isInLoudnessEvent: boolean = false;
-  private audioStartPoint: number = 0;
+  private audioStartPoint: number = 0;  // Timestamp when audio started (preTriggerBufferDuration before threshold)
+  private hasSentInitialBlob: boolean = false;
   
   // Audio storage
   private audioChunks: Blob[] = [];
   private headerChunks: Blob[] = [];
   private lastChunkTimestamp: number = 0;
   private hasCapturedHeaders: boolean = false;
-  private chunkTimestamps: number[] = []; // Track timestamps for each chunk
+  private chunkTimestamps: { start: number; end: number }[] = []; // Track timestamps for each chunk
   
   // Timers and timestamps
   private volumeInterval: number | null = null;
@@ -161,8 +189,10 @@ class AudioLoudnessMeterV2 {
       }
 
       if (!isLoudnessOverThreshold && lastLoudnessOverThreshold) {
+        // Start timing silence when loudness drops below threshold
         silenceStartTime = Date.now();
       } else if (!isLoudnessOverThreshold && silenceStartTime !== null) {
+        // Check if we've been silent for long enough
         const silenceDuration = Date.now() - silenceStartTime;
         if (silenceDuration >= this.config.silenceDuration) {
           this.handleSilenceDetected();
@@ -181,10 +211,12 @@ class AudioLoudnessMeterV2 {
   private handleLoudnessDetected(): void {
     if (this.isInLoudnessEvent) return;
 
+    // Set the audio start point to preTriggerBufferDuration before current time
     this.audioStartPoint = Date.now() - this.config.preTriggerBufferDuration;
     this.isInLoudnessEvent = true;
+    this.hasSentInitialBlob = false;
 
-    // Instead of using setTimeout, we'll check periodically if we have enough audio
+    // Check periodically if we have enough audio
     const checkInterval = setInterval(() => {
       if (!this.isRecording) {
         clearInterval(checkInterval);
@@ -193,13 +225,10 @@ class AudioLoudnessMeterV2 {
 
       // Calculate the target end time
       const targetEndTime = this.audioStartPoint + this.config.initialRecordingDuration;
+      const currentTime = Date.now();
       
-      // Check if we have chunks that cover the full duration
-      const hasEnoughAudio = this.chunkTimestamps.some(timestamp => 
-        timestamp >= targetEndTime
-      );
-
-      if (hasEnoughAudio) {
+      // If we have enough audio, send the initial blob
+      if (currentTime >= targetEndTime) {
         clearInterval(checkInterval);
         this.sendInitialBlob();
       }
@@ -210,9 +239,12 @@ class AudioLoudnessMeterV2 {
     if (!this.isInLoudnessEvent) return;
 
     this.sendCompleteBlob();
-    this.stopRecording();
     this.isInLoudnessEvent = false;
-    this.startContinuousRecording();
+    this.hasSentInitialBlob = false;
+    
+    // Clear all chunks after silence is detected
+    this.audioChunks = [];
+    this.chunkTimestamps = [];
   }
 
   private startContinuousRecording(): void {
@@ -223,8 +255,12 @@ class AudioLoudnessMeterV2 {
       audioBitsPerSecond: 128000,
     });
 
-    this.audioChunks = [];
-    this.chunkTimestamps = [];
+    // Only clear chunks if we're not in a loudness event
+    if (!this.isInLoudnessEvent) {
+      this.audioChunks = [];
+      this.chunkTimestamps = [];
+    }
+    
     if (!this.hasCapturedHeaders) {
       this.headerChunks = [];
     }
@@ -234,15 +270,22 @@ class AudioLoudnessMeterV2 {
 
     this.mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
+        const currentTime = Date.now();
+        
         if (!this.hasCapturedHeaders && this.headerChunks.length < 2) {
           this.headerChunks.push(event.data);
           if (this.headerChunks.length >= 2) {
             this.hasCapturedHeaders = true;
           }
         }
+        
+        // Store the chunk with its start time (lastChunkTimestamp) and end time (currentTime)
         this.audioChunks.push(event.data);
-        this.chunkTimestamps.push(Date.now());
-        this.lastChunkTimestamp = Date.now();
+        this.chunkTimestamps.push({
+          start: this.lastChunkTimestamp,
+          end: currentTime
+        });
+        this.lastChunkTimestamp = currentTime;
       }
     };
 
@@ -256,38 +299,107 @@ class AudioLoudnessMeterV2 {
     this.isRecording = false;
   }
 
+  private getRelevantChunks(startTime: number, endTime: number, isSilenceDetection: boolean = false): Blob[] {
+    const relevantChunks: Blob[] = [];
+    let totalDuration = 0;
+    let firstChunkIndex = -1;
+    let lastChunkIndex = -1;
+
+    // First pass: find the chunks that overlap with our time window
+    for (let i = 0; i < this.audioChunks.length; i++) {
+      const chunkTime = this.chunkTimestamps[i];
+      
+      // If chunk overlaps with our time window, include it
+      if (chunkTime.start < endTime && chunkTime.end > startTime) {
+        if (firstChunkIndex === -1) firstChunkIndex = i;
+        lastChunkIndex = i;
+        relevantChunks.push(this.audioChunks[i]);
+        totalDuration += chunkTime.end - chunkTime.start;
+      }
+    }
+
+    // If we don't have enough chunks to make up the full duration, return empty
+    if (relevantChunks.length === 0 || (!isSilenceDetection && totalDuration < this.config.initialRecordingDuration)) {
+      console.log(`Not enough audio chunks: ${totalDuration}ms vs required ${this.config.initialRecordingDuration}ms`);
+      return [];
+    }
+
+    // For silence detection, return all relevant chunks without trimming
+    if (isSilenceDetection) {
+      return relevantChunks;
+    }
+
+    // Calculate the exact duration we need for initial blob
+    const targetEndTime = startTime + this.config.initialRecordingDuration;
+    const trimmedChunks: Blob[] = [];
+    let currentDuration = 0;
+
+    // Second pass: trim to exactly initialRecordingDuration
+    for (let i = firstChunkIndex; i <= lastChunkIndex; i++) {
+      const chunkTime = this.chunkTimestamps[i];
+      const chunkStart = Math.max(chunkTime.start, startTime);
+      const chunkEnd = Math.min(chunkTime.end, targetEndTime);
+      const chunkDuration = chunkEnd - chunkStart;
+
+      if (chunkDuration > 0) {
+        trimmedChunks.push(this.audioChunks[i]);
+        currentDuration += chunkDuration;
+      }
+
+      // Stop if we've reached our target duration
+      if (currentDuration >= this.config.initialRecordingDuration) {
+        break;
+      }
+    }
+
+    // Log the trimming details
+    if (totalDuration !== currentDuration) {
+      console.log(`Trimmed audio from ${totalDuration}ms to ${currentDuration}ms (target: ${this.config.initialRecordingDuration}ms)`);
+    }
+
+    return trimmedChunks;
+  }
+
   private sendInitialBlob(): void {
-    if (!this.isRecording || this.audioChunks.length === 0) return;
+    if (this.audioChunks.length === 0) return;
 
     const endTime = this.audioStartPoint + this.config.initialRecordingDuration;
-    const relevantChunks = this.getRelevantChunks(this.audioStartPoint, endTime);
+    const relevantChunks = this.getRelevantChunks(this.audioStartPoint, endTime, false);
 
     if (relevantChunks.length > 0) {
+      // Calculate the actual duration of the chunks we're about to send
+      const firstChunkTime = this.chunkTimestamps[0].start;
+      const lastChunkTime = this.chunkTimestamps[relevantChunks.length - 1].end;
+      const actualDuration = lastChunkTime - firstChunkTime;
+      
+      console.log(`[Initial Blob] Duration: ${actualDuration}ms (target: ${this.config.initialRecordingDuration}ms)`);
+
       const initialBlob = new Blob([...this.headerChunks, ...relevantChunks], {
         type: this.config.currentMimeType,
       });
       this.callbacks.onAudioAboveThresholdDetected?.(initialBlob);
+      this.hasSentInitialBlob = true;
     }
   }
 
   private sendCompleteBlob(): void {
-    if (!this.isRecording || this.audioChunks.length === 0) return;
+    if (this.audioChunks.length === 0) return;
 
-    const relevantChunks = this.getRelevantChunks(this.audioStartPoint, Date.now());
+    const relevantChunks = this.getRelevantChunks(this.audioStartPoint, Date.now(), true);
 
     if (relevantChunks.length > 0) {
+      // Calculate the actual duration of the complete blob
+      const firstChunkTime = this.chunkTimestamps[0].start;
+      const lastChunkTime = this.chunkTimestamps[relevantChunks.length - 1].end;
+      const actualDuration = lastChunkTime - firstChunkTime;
+      
+      console.log(`[Complete Blob] Duration: ${actualDuration}ms`);
+
       const completeBlob = new Blob([...this.headerChunks, ...relevantChunks], {
         type: this.config.currentMimeType,
       });
       this.callbacks.onSilenceDetected?.(completeBlob);
     }
-  }
-
-  private getRelevantChunks(startTime: number, endTime: number): Blob[] {
-    return this.audioChunks.filter((_, index) => {
-      const chunkTime = this.chunkTimestamps[index];
-      return chunkTime >= startTime && chunkTime <= endTime;
-    });
   }
 
   private cleanupTimers(): void {
@@ -323,6 +435,7 @@ class AudioLoudnessMeterV2 {
     this.lastChunkTimestamp = 0;
     this.hasCapturedHeaders = false;
     this.lastLoudnessTime = 0;
+    this.hasSentInitialBlob = false;
     this.callbacks = {};
   }
 
