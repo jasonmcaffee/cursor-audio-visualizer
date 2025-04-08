@@ -11,9 +11,9 @@ export default function LoudnessMeter({ volume }: LoudnessMeterProps) {
         className={styles.meterBar} 
         style={{ height: `${volume}%` }}
       />
-      <div className={styles.volumeNumber}>
+      {/* <div className={styles.volumeNumber}>
         {volume}
-      </div>
+      </div> */}
     </div>
   );
 } 
