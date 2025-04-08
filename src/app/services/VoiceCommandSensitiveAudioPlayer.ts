@@ -10,7 +10,7 @@ import WebAudioPlayer from "./WebAudioPlayer";
 export default class VoiceCommandSensitiveAudioPlayer {
     
     private config = {
-        loudnessThreshold: 5,
+        loudnessThreshold: 8,
         // preTriggerBufferDuration: 20,
         // initialRecordingDuration: 1000,
         // volumeCheckInterval: 50,
@@ -73,7 +73,6 @@ export default class VoiceCommandSensitiveAudioPlayer {
     
     private handlePeriodicVolumeInformation(volume: number): void {
         if(volume > this.config.loudnessThreshold && this.queuedWebAudioPlayer.isPlaying){
-            console.log('- periodic volume above threshold. pausing audio');
             this.queuedWebAudioPlayer.pause();
             clearInterval(this.pauseDueToAudioLoundessThresholdExceededIntervalId);
             //@ts-ignore

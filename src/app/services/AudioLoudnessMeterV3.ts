@@ -133,12 +133,14 @@ class AudioLoudnessMeterV3 {
       this.periodicVolumeCalcIntervalId = window.setInterval(() => {
         normalizedLoudness = calculateLoudness(this.analyser!);
         this.onPeriodicVolumeInformation?.(normalizedLoudness);
-        // console.log('normalizedLoudness', normalizedLoudness);
         isLoudnessOverThreshold = normalizedLoudness >= this.config.loudnessThreshold;
+        loudnessDetection();
+        silenceDetection();
       }, this.config.volumeCheckIntervalMs);
 
+     
 
-      this.volumeExceededThresholdIntervalId = window.setInterval(() => {
+      const loudnessDetection = () => {
         if(processingAudioThresholdExceededEvent) { return; } //we don't want to send multiple events as threshold keeps getting crossed.
 
         if(loudnessDetectedStartTime != null) {   //already processing.
@@ -152,12 +154,15 @@ class AudioLoudnessMeterV3 {
           //tell the blob collector which audio chunks to include.
           this.audioShouldStartAtThisDateTime = Date.now() - this.config.msWorthOfAudioThatShouldBeIncludedBeforVolumeThresholdWasCrossed;
         }
+      };
 
-      }, this.config.volumeCheckIntervalMs);
-
-
-      this.silenceVolumeIntervalId = window.setInterval(() => {
+      const silenceDetection = () => {
         if(!processingAudioThresholdExceededEvent) { return; }
+
+        //if the loudness crosses the threshold, reset the silence timer.
+        if(isLoudnessOverThreshold) {
+          silenceDetectedStartTime = null;
+        }if(!processingAudioThresholdExceededEvent) { return; }
 
         //if the loudness crosses the threshold, reset the silence timer.
         if(isLoudnessOverThreshold) {
@@ -179,7 +184,8 @@ class AudioLoudnessMeterV3 {
             processingAudioThresholdExceededEvent = false;
           }
         }
-      }, this.config.volumeCheckIntervalMs);
+      };
+
     }
   
 

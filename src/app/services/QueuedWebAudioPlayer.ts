@@ -33,7 +33,7 @@ export default class QueuedWebAudioPlayer {
         // Chain this processing to the previous enqueue operation to ensure sequential processing
         this.enqueueProcessingPromise = this.enqueueProcessingPromise
             .then(async () => {
-                console.log(`Processing new audio chunk`);
+                // console.log(`Processing new audio chunk`);
                 if(!this.audioContext){
                     this.audioContext = new AudioContext();
                     this.gainNode = this.audioContext.createGain();
@@ -117,7 +117,7 @@ export default class QueuedWebAudioPlayer {
     }
 
     play() {
-        console.log('play() called isAudioBufferPlaying currentBuffer playbackPosition', this.isAudioBufferPlaying, this.currentBuffer, this.playbackPosition);
+        // console.log('play() called isAudioBufferPlaying currentBuffer playbackPosition', this.isAudioBufferPlaying, this.currentBuffer, this.playbackPosition);
         if (this.isAudioBufferPlaying) {
             return;
         }
