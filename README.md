@@ -3,7 +3,7 @@ This is a proof of concept project that proves out how to handle voice commands 
 
 ## Demo
 An Alan Watts lecture is used to play the part of the assitant speaking.  When the user speaks, Alan Watts is paused until silence is detected.
-[demo.png]
+[demo.png](demo.png)
 
 # Modules
 
