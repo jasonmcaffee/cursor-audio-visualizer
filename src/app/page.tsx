@@ -20,6 +20,8 @@ export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [alanWattsAudioBlob, setAlanWattsAudioBlob] = useState<Blob | null>(null);
   const [hasAlreadyEnqueuedAlanWattsAudio, setHasAlreadyEnqueuedAlanWattsAudio] = useState(false);
+  const [lastAudioAboveThresholdBlob, setLastAudioAboveThresholdBlob] = useState<Blob | null>(null);
+  const [lastSilenceDetectedBlob, setLastSilenceDetectedBlob] = useState<Blob | null>(null);
   async function fetchAudioBlob(){
     console.log('fetching audio blob');
     const response = await fetch('sounds/Alan Watts - Buddhism Religion of No Religion  1.mp3');
@@ -60,9 +62,11 @@ export default function Home() {
       },
       onAudioAboveThresholdDetected: async (audioBlob: Blob) => {
         setAudioAboveThresholdCount(prev => prev + 1);
+        setLastAudioAboveThresholdBlob(audioBlob);
       },
       onSilenceDetected: async (audioBlob: Blob) => {
         setSilenceDetectedCount(prev => prev + 1);
+        setLastSilenceDetectedBlob(audioBlob);
       },
     });
     setIsRecording(true);
@@ -93,6 +97,24 @@ export default function Home() {
         audioAboveThresholdCount={audioAboveThresholdCount}
         silenceDetectedCount={silenceDetectedCount}
       />
+
+      <button 
+        className={styles.playButton}
+        onClick={() => webAudioPlayer.playAudioBlob(lastAudioAboveThresholdBlob!)}
+        disabled={!lastAudioAboveThresholdBlob}
+      >
+        <FaPlay />
+        Play Last Audio Above Threshold
+      </button>
+
+      <button 
+        className={styles.playButton}
+        onClick={() => webAudioPlayer.playAudioBlob(lastSilenceDetectedBlob!)}
+        disabled={!lastSilenceDetectedBlob}
+      >
+        <FaPlay />
+        Play Last Silence Detected
+      </button>
     </main>
   );
 }
