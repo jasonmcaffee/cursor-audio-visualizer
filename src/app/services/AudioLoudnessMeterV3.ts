@@ -41,7 +41,6 @@ class AudioLoudnessMeterV3 {
     // Recording state
     private isAnalyzing: boolean = false;
     private isRecording: boolean = false;
-    private isInLoudnessEvent: boolean = false; // Track if we're between threshold crossing and silence
     private audioShouldStartAtThisDateTime: number = 0; // Timestamp when threshold was crossed minus preTriggerBufferDuration
     
     // Audio storage
@@ -49,11 +48,7 @@ class AudioLoudnessMeterV3 {
     private headerChunks: Blob[] = []; // Store initial chunks with headers
     
     // Timers and timestamps
-    private volumeExceededThresholdIntervalId = -1;
-    private silenceVolumeIntervalId = -1;
     private periodicVolumeCalcIntervalId = -1;
-    private silenceTimeout = -1;
-    private lastLoudnessTime: number = 0;
     
     // Callbacks
     private onAudioAboveThresholdDetected: ((audioBlob: Blob) => void) | null = null;
@@ -190,6 +185,7 @@ class AudioLoudnessMeterV3 {
   
 
     private async startRecording() {
+      console.log('starting recording');
       this.mediaRecorder = new MediaRecorder(this.mediaStream!, {mimeType: this.config.currentMimeType,audioBitsPerSecond: 128000});
 
       // Reset audio chunks but keep header chunks if we have them
@@ -200,6 +196,7 @@ class AudioLoudnessMeterV3 {
         if (event.data.size > 0) {
           // Store the first few chunks as header chunks if we haven't captured them yet
           if (this.headerChunks.length < this.config.numberOfChunksToCaptureAsHeaders) {
+            console.log('capturing header chunks');
             this.headerChunks.push(event.data);
           }
           const extendedBlob = event.data as ExtendedBlob;
@@ -214,7 +211,12 @@ class AudioLoudnessMeterV3 {
     }
   
     private stopRecording(): void {
+      console.log('stopping recording');
+      if(this.mediaRecorder){ //don't allow more headers to be captured after they are cleared.
+        this.mediaRecorder.ondataavailable = ()=>{};
+      }
       if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+        console.log('media recorder is active. stopping it.');
         this.mediaRecorder.stop();
       }
       this.isRecording = false;
@@ -265,37 +267,24 @@ class AudioLoudnessMeterV3 {
   
     
     public stop(): void {
-        if (!this.isAnalyzing) { return; }
-        clearInterval(this.volumeExceededThresholdIntervalId);
-        this.volumeExceededThresholdIntervalId = -1; 
-        clearInterval(this.silenceVolumeIntervalId);
-        this.silenceVolumeIntervalId = -1;
-        clearTimeout(this.silenceTimeout);
-        this.silenceTimeout = -1;
-        clearInterval(this.periodicVolumeCalcIntervalId);
-        this.periodicVolumeCalcIntervalId = -1;
-        
-        // Stop recording
-        this.stopRecording();
-    
-        this.source?.disconnect();
-        this.source = null;
-        this.analyser?.disconnect();
-        this.analyser = null;
-        this.mediaStream?.getTracks().forEach(track => track.stop());
-        this.mediaStream = null;
-        this.audioContext?.close();
-        this.audioContext = null;
-    
-        // Reset state
-        this.isAnalyzing = false;
-        this.isRecording = false;
-        this.isInLoudnessEvent = false;
-        this.audioShouldStartAtThisDateTime = 0;
-        this.audioChunks = [];
-        this.headerChunks = [];
-        this.lastLoudnessTime = 0;
-      }
+      console.log('stopping AudioLoudnessMeterV3');
+      clearInterval(this.periodicVolumeCalcIntervalId);
+      this.periodicVolumeCalcIntervalId = -1;
+      this.stopRecording();
+      this.source?.disconnect();
+      this.source = null;
+      this.analyser?.disconnect();
+      this.analyser = null;
+      this.mediaStream?.getTracks().forEach(track => track.stop());
+      this.mediaStream = null;
+      this.audioContext?.close();
+      this.audioContext = null;
+      this.isAnalyzing = false;
+      this.isRecording = false;
+      this.audioShouldStartAtThisDateTime = 0;
+      this.audioChunks = [];
+      this.headerChunks = [];
+    }
   }
   
   export default AudioLoudnessMeterV3;
