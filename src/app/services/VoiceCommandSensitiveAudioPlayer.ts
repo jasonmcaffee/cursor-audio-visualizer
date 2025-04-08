@@ -20,6 +20,8 @@ export default class VoiceCommandSensitiveAudioPlayer {
         echoCancellation: true, //removes audio from speakers.
         noiseSuppression: true, //Constant sounds like fans, keyboard clacking, air conditioning hum, etc.
         autoGainControl: true, //If you're speaking quietly → it will boost your voice.
+        onAudioAboveThresholdDetected: undefined as ((audioBlob: Blob) => void) | undefined,
+        onSilenceDetected: undefined as ((audioBlob: Blob) => void) | undefined,
     };
 
     private pauseDueToAudioLoundessThresholdExceededIntervalId: number | undefined;
@@ -62,13 +64,15 @@ export default class VoiceCommandSensitiveAudioPlayer {
     private async handleLoudnessDetected(audioBlob: Blob) {
         console.log('loudness detected. playing audio', audioBlob);
         this.queuedWebAudioPlayer.setVolume(0.5);
-        this.webAudioPlayer.playAudioBlob(audioBlob);
+        // this.webAudioPlayer.playAudioBlob(audioBlob);
+        this.config.onAudioAboveThresholdDetected?.(audioBlob);
     }
 
     private handleSilenceDetected(audioBlob: Blob) {
         console.log('silence detected. setting volume back to normal', audioBlob);
         this.queuedWebAudioPlayer.setVolume(this.config.audioPlayerVolume);
-        this.webAudioPlayer.playAudioBlob(audioBlob);
+        // this.webAudioPlayer.playAudioBlob(audioBlob);
+        this.config.onSilenceDetected?.(audioBlob);
     }   
     
     private handlePeriodicVolumeInformation(volume: number): void {
