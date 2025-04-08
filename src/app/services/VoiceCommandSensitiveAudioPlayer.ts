@@ -17,9 +17,9 @@ export default class VoiceCommandSensitiveAudioPlayer {
         // fftSize: 1024,
         currentMimeType: 'audio/webm;codecs=opus',
         audioPlayerVolume: 1.0,
-        echoCancellation: false, //removes audio from speakers.
-        noiseSuppression: false, //Constant sounds like fans, keyboard clacking, air conditioning hum, etc.
-        autoGainControl: false, //If you're speaking quietly → it will boost your voice.
+        echoCancellation: true, //removes audio from speakers.
+        noiseSuppression: true, //Constant sounds like fans, keyboard clacking, air conditioning hum, etc.
+        autoGainControl: true, //If you're speaking quietly → it will boost your voice.
     };
 
     private pauseDueToAudioLoundessThresholdExceededIntervalId: number | undefined;
@@ -60,27 +60,25 @@ export default class VoiceCommandSensitiveAudioPlayer {
     }   
 
     private async handleLoudnessDetected(audioBlob: Blob) {
-        // console.log('loudness detected. playing audio', audioBlob);
-        // this.queuedWebAudioPlayer.setVolume(0.5);
-        // await this.queuedWebAudioPlayer.enqueueAudio(audioBlob);
-        // this.webAudioPlayer.playAudioBlob(audioBlob);
+        console.log('loudness detected. playing audio', audioBlob);
+        this.queuedWebAudioPlayer.setVolume(0.5);
+        this.webAudioPlayer.playAudioBlob(audioBlob);
     }
 
     private handleSilenceDetected(audioBlob: Blob) {
         console.log('silence detected. setting volume back to normal', audioBlob);
         this.queuedWebAudioPlayer.setVolume(this.config.audioPlayerVolume);
-        // this.queuedWebAudioPlayer.enqueueAudio(audioBlob);
         this.webAudioPlayer.playAudioBlob(audioBlob);
     }   
     
     private handlePeriodicVolumeInformation(volume: number): void {
         if(volume > this.config.loudnessThreshold && this.queuedWebAudioPlayer.isPlaying){
-            // console.log('- periodic volume above threshold. pausing audio');
+            console.log('- periodic volume above threshold. pausing audio');
             this.queuedWebAudioPlayer.pause();
-            //todo: pause audio for 1 second.  use setTimeout and clearInterval to reset if the volume is still above threshold
             clearInterval(this.pauseDueToAudioLoundessThresholdExceededIntervalId);
             //@ts-ignore
             this.pauseDueToAudioLoundessThresholdExceededIntervalId = setTimeout(() => {
+                console.log('resuming audio');
                 this.queuedWebAudioPlayer.play();
             }, 5000);
         }

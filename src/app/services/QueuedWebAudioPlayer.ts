@@ -99,6 +99,7 @@ export default class QueuedWebAudioPlayer {
 
     pause() {
         if (!this.isAudioBufferPlaying || !this.currentSource || !this.audioContext) {
+            // console.log('pause() called but isAudioBufferPlaying is false or currentSource is undefined or audioContext is undefined');
             return;
         }
 
@@ -116,6 +117,7 @@ export default class QueuedWebAudioPlayer {
     }
 
     play() {
+        console.log('play() called isAudioBufferPlaying currentBuffer playbackPosition', this.isAudioBufferPlaying, this.currentBuffer, this.playbackPosition);
         if (this.isAudioBufferPlaying) {
             return;
         }

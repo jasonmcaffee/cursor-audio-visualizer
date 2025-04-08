@@ -63,7 +63,7 @@ class AudioLoudnessMeterV3 {
     // Configuration options with defaults
     private config = {
       loudnessThreshold: 6,           // Default loudness threshold (0-100)
-      amountOfSilenceMsBeforeOnSilenceIsTriggered: 2000,          // Duration of silence before callback (ms)
+      amountOfSilenceMsBeforeOnSilenceIsTriggered: 1000,          // Duration of silence before callback (ms)
       initialRecordingDuration: 1000, // Initial audio recording duration after trigger (ms)
       msWorthOfAudioThatShouldBeIncludedBeforVolumeThresholdWasCrossed: 100,  // Audio to keep before trigger (ms)
       volumeCheckIntervalMs: 10,        // Interval for volume checking (ms)
@@ -135,7 +135,7 @@ class AudioLoudnessMeterV3 {
         this.onPeriodicVolumeInformation?.(normalizedLoudness);
         // console.log('normalizedLoudness', normalizedLoudness);
         isLoudnessOverThreshold = normalizedLoudness >= this.config.loudnessThreshold;
-      }, 5);
+      }, this.config.volumeCheckIntervalMs);
 
 
       this.volumeExceededThresholdIntervalId = window.setInterval(() => {
@@ -172,7 +172,7 @@ class AudioLoudnessMeterV3 {
         //if the silence timer is running, and the duration has exceeded the silence duration, trigger the silence detected event.
         if(silenceDetectedStartTime != null) { 
           const silenceDuration = Date.now() - silenceDetectedStartTime!;
-          console.log('silenceDuration', silenceDuration);
+          // console.log('silenceDuration', silenceDuration);
           if(silenceDuration >= this.config.amountOfSilenceMsBeforeOnSilenceIsTriggered) {
             this.triggerOnSilenceDetected();
             silenceDetectedStartTime = null;
