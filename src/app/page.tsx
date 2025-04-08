@@ -6,10 +6,10 @@ import styles from './page.module.css';
 import LoudnessMeter from './components/LoudnessMeter';
 import CallbackCounters from './components/CallbackCounters';
 import WebAudioPlayer from './services/WebAudioPlayer';
-import VoiceCommandSensitiveAudioPlayer from './services/VoiceCommandSensitiveAudioPlayer';
+import VoiceInteractionAudioService from './services/VoiceInteractionAudioService';
 
 const webAudioPlayer = new WebAudioPlayer();
-const voiceCommandSensitiveAudioPlayer = new VoiceCommandSensitiveAudioPlayer();
+const voiceCommandSensitiveAudioPlayer = new VoiceInteractionAudioService();
 
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
